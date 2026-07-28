@@ -1,0 +1,10 @@
+# Runtime logs (retain the directory placeholder)
+logs/*
+!logs/.gitkeep
+
+# Editor and temporary files
+.DS_Store
+*~
+*.swp
+.idea/
+.vscode/
