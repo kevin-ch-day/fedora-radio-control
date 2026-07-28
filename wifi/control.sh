@@ -4,21 +4,29 @@
 
 WIFI_CONTROL_LOG_FILE=''
 
+wifi_autoconnect_profile_count() {
+  local output line connection_type autoconnect count=0
+  if ! output="$(nmcli --terse --fields TYPE,AUTOCONNECT connection show 2>/dev/null)"; then
+    return 1
+  fi
+  while IFS= read -r line; do
+    IFS=':' read -r connection_type autoconnect <<< "${line}"
+    if [[ "${connection_type}" == 'wifi' || "${connection_type}" == '802-11-wireless' ]] && [[ "${autoconnect}" == 'yes' ]]; then
+      ((count += 1))
+    fi
+  done <<< "${output}"
+  printf '%s' "${count}"
+}
+
 wifi_control_log() {
   printf '%s\n' "$*" >> "${WIFI_CONTROL_LOG_FILE}"
 }
 
 wifi_control_begin_log() {
   local action="$1"
-  local timestamp
-  timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
-  mkdir -p "${APPLICATION_ROOT}/logs"
-  WIFI_CONTROL_LOG_FILE="${APPLICATION_ROOT}/logs/${timestamp}_wifi-${action}.log"
-  : > "${WIFI_CONTROL_LOG_FILE}"
-  chmod 600 "${WIFI_CONTROL_LOG_FILE}"
-  grant_invoking_user_log_access "${WIFI_CONTROL_LOG_FILE}" || true
-  ln -sfn "$(basename "${WIFI_CONTROL_LOG_FILE}")" "${APPLICATION_ROOT}/logs/latest.log"
-  wifi_control_log "timestamp_utc=${timestamp}"
+  begin_action_log "wifi-${action}" || return $?
+  WIFI_CONTROL_LOG_FILE="${ACTION_LOG_FILE}"
+  wifi_control_log "timestamp_utc=$(date -u +%Y%m%dT%H%M%SZ)"
   wifi_control_log "invoking_user=${SUDO_USER:-$(id -un)}"
   wifi_control_log "requested_action=wifi_${action}"
 }
@@ -36,14 +44,16 @@ wifi_control_log_state() {
 }
 
 wifi_control_attempt() {
-  local description="$1"
+  local description="$1" status
   shift
   wifi_control_log "attempt=${description}"
   if "$@" >/dev/null 2>&1; then
     wifi_control_log "attempt_result=${description}:ok"
     return 0
+  else
+    status=$?
   fi
-  wifi_control_log "attempt_result=${description}:failed"
+  wifi_control_log "attempt_result=${description}:failed:exit=${status}"
   return 1
 }
 
@@ -59,7 +69,7 @@ wifi_enable_verified() {
 }
 
 wifi_disable_apply() {
-  wifi_control_begin_log 'disable'
+  wifi_control_begin_log 'disable' || return $?
   refresh_radio_state
   wifi_control_log_state 'before'
   wifi_control_attempt 'disable_networkmanager_wifi' nmcli radio wifi off || true
@@ -73,12 +83,12 @@ wifi_disable_apply() {
   fi
   wifi_control_log 'final_result=NOT_DISABLED'
   error "Wi-Fi disable was not verified. Log: ${WIFI_CONTROL_LOG_FILE}"
-  (( STATE_QUERY_FAILED )) && return "${EXIT_UNKNOWN}"
+  (( WIFI_QUERY_FAILED )) && return "${EXIT_UNKNOWN}"
   return "${EXIT_POLICY}"
 }
 
 wifi_enable_apply() {
-  wifi_control_begin_log 'enable'
+  wifi_control_begin_log 'enable' || return $?
   refresh_radio_state
   wifi_control_log_state 'before'
   wifi_control_attempt 'unblock_wlan_rfkill' rfkill unblock wlan || true
@@ -92,7 +102,7 @@ wifi_enable_apply() {
   fi
   wifi_control_log 'final_result=NOT_ENABLED'
   error "Wi-Fi enable was not verified. A hardware RFKill block cannot be removed by software. Log: ${WIFI_CONTROL_LOG_FILE}"
-  (( STATE_QUERY_FAILED )) && return "${EXIT_UNKNOWN}"
+  (( WIFI_QUERY_FAILED )) && return "${EXIT_UNKNOWN}"
   return "${EXIT_POLICY}"
 }
 

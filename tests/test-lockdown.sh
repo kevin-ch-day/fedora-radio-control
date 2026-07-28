@@ -14,7 +14,7 @@ source "${REPO_DIR}/wifi/state.sh"
 source "${REPO_DIR}/bluetooth/state.sh"
 # shellcheck source=../lib/radio-state.sh
 source "${REPO_DIR}/lib/radio-state.sh"
-APPLICATION_ROOT="${REPO_DIR}"
+APPLICATION_ROOT="${TEST_DIR}"
 # shellcheck source=../lib/lockdown.sh
 source "${REPO_DIR}/lib/lockdown.sh"
 
@@ -23,7 +23,6 @@ MOCK_WIFI_BLOCK='unblocked'
 MOCK_BLUETOOTH_BLOCK='unblocked'
 MOCK_BLUETOOTH_SERVICE='active'
 MOCK_COMMANDS=()
-LOCKDOWN_LOG_DIR="${TEST_DIR}/logs"
 
 nmcli() {
   if [[ "$*" == '--terse --fields WIFI general status' ]]; then
@@ -83,7 +82,7 @@ lockdown_apply >/dev/null || fail 'mocked lockdown should verify successfully'
 [[ "${MOCK_BLUETOOTH_BLOCK}" == 'blocked' ]] || fail 'Bluetooth was not RFKill-blocked'
 [[ "${MOCK_BLUETOOTH_SERVICE}" == 'inactive' ]] || fail 'Bluetooth service was not stopped'
 [[ "${#MOCK_COMMANDS[@]}" -eq 5 ]] || fail 'unexpected number of mutation attempts'
-[[ -L "${LOCKDOWN_LOG_DIR}/latest.log" ]] || fail 'latest log link was not created'
+[[ -L "${ACTION_LOG_DIRECTORY}/latest.log" ]] || fail 'latest log link was not created'
 grep -Fq 'final_result=LOCKED_DOWN' "${LOCKDOWN_LOG_FILE}" || fail 'verified result was not logged'
 grep -Fq 'attempt=disable_networkmanager_wifi' "${LOCKDOWN_LOG_FILE}" || fail 'Wi-Fi disable was not logged'
 grep -Fq 'attempt=stop_bluetooth_service' "${LOCKDOWN_LOG_FILE}" || fail 'Bluetooth stop was not logged'

@@ -60,6 +60,24 @@ readiness_vpn_state() {
   printf 'INFORMATIONAL (none detected)'
 }
 
+readiness_running_kernel_age() {
+  local install_time now age_days kernel_package
+  command -v rpm >/dev/null 2>&1 || { printf 'REVIEW (rpm unavailable)'; return; }
+  kernel_package="kernel-core-$(uname -r 2>/dev/null || true)"
+  [[ -n "${kernel_package}" ]] || { printf 'REVIEW (running kernel query failed)'; return; }
+  if ! install_time="$(rpm -q --qf '%{INSTALLTIME}' "${kernel_package}" 2>/dev/null)" || [[ ! "${install_time}" =~ ^[0-9]+$ ]]; then
+    printf 'REVIEW (running kernel package not verified)'
+    return
+  fi
+  now="$(date -u +%s)"
+  if (( now < install_time )); then
+    printf 'REVIEW (running kernel package timestamp is invalid)'
+    return
+  fi
+  age_days=$(( (now - install_time) / 86400 ))
+  printf 'REVIEW (running kernel package installed %s days ago; update status not verified)' "${age_days}"
+}
+
 readiness_wireless_zone() {
   local interface="$1"
   local zone
@@ -106,7 +124,7 @@ report_wifi_profile_autoconnect() {
 }
 
 report_readiness() {
-  local policy wifi_interface firewall_state radio_verdict bluetooth_service bluetooth_exposure wifi_autoconnect vpn_state wireless_zone
+  local policy wifi_interface firewall_state radio_verdict bluetooth_service bluetooth_controller_exposure bluetooth_posture wifi_autoconnect vpn_state wireless_zone kernel_age
   local wifi_interface_known=1 wifi_autoconnect_known=1 readiness_unknown=0 readiness_failed=0 wifi_interface_status
   refresh_radio_state
   policy="$(current_policy_result)"
@@ -115,19 +133,32 @@ report_readiness() {
     'STATE UNKNOWN') radio_verdict='UNKNOWN' ;;
     *) radio_verdict='FAIL' ;;
   esac
-  [[ "${BLUETOOTH_SERVICE_ACTIVE}" == 'inactive' ]] && bluetooth_service='PASS' || bluetooth_service='FAIL'
+  if [[ "${BLUETOOTH_SERVICE_ACTIVE}" == 'inactive' ]]; then
+    bluetooth_service='PASS (inactive)'
+  else
+    bluetooth_service="FAIL (${BLUETOOTH_SERVICE_ACTIVE})"
+  fi
   case "${BLUETOOTH_CONTROLLER}" in
-    unavailable) bluetooth_exposure='NOT APPLICABLE' ;;
-    tool-unavailable) bluetooth_exposure='REVIEW (bluetoothctl unavailable)' ;;
-    unknown) bluetooth_exposure='UNKNOWN' ;;
+    unavailable) bluetooth_controller_exposure='NOT APPLICABLE (no controller)' ;;
+    tool-unavailable) bluetooth_controller_exposure='REVIEW (bluetoothctl unavailable)' ;;
+    unknown) bluetooth_controller_exposure='UNKNOWN' ;;
     available)
       if [[ "${BLUETOOTH_POWERED}" == 'no' && "${BLUETOOTH_DISCOVERABLE}" == 'no' && "${BLUETOOTH_PAIRABLE}" == 'no' ]]; then
-        bluetooth_exposure='PASS'
+        bluetooth_controller_exposure='PASS'
       else
-        bluetooth_exposure='FAIL'
+        bluetooth_controller_exposure='FAIL'
       fi
       ;;
   esac
+  if [[ "${bluetooth_service}" == FAIL* ]]; then
+    bluetooth_posture='FAIL (service remains active)'
+  elif [[ "${bluetooth_controller_exposure}" == 'PASS' || "${bluetooth_controller_exposure}" == NOT\ APPLICABLE* ]]; then
+    bluetooth_posture='PASS'
+  elif [[ "${bluetooth_controller_exposure}" == REVIEW* ]]; then
+    bluetooth_posture='REVIEW (controller not assessed)'
+  else
+    bluetooth_posture="${bluetooth_controller_exposure}"
+  fi
   if wifi_interface="$(readiness_active_wifi_interface)"; then
     :
   else
@@ -143,11 +174,13 @@ report_readiness() {
   fi
   vpn_state="$(readiness_vpn_state || printf 'UNKNOWN')"
   wireless_zone="$(readiness_wireless_zone "${wifi_interface}")"
+  kernel_age="$(readiness_running_kernel_age)"
 
   ui_heading 'DEF CON Readiness'
   ui_label 'Radio lockdown:' "${radio_verdict}"
   ui_label 'Bluetooth service:' "${bluetooth_service}"
-  ui_label 'Bluetooth exposure:' "${bluetooth_exposure}"
+  ui_label 'Bluetooth controller exposure:' "${bluetooth_controller_exposure}"
+  ui_label 'Bluetooth overall posture:' "${bluetooth_posture}"
   if (( ! wifi_interface_known )); then
     ui_label 'Active wireless link:' 'UNKNOWN (query failed)'
     ui_label 'Wireless zone:' 'UNKNOWN (interface not verified)'
@@ -173,19 +206,24 @@ report_readiness() {
   fi
   ui_label 'Firewall service:' "${firewall_state}"
   ui_label 'VPN detected:' "${vpn_state}"
+  ui_label 'Kernel patch freshness:' "${kernel_age}"
+  ui_label 'Device hygiene:' 'REVIEW (patch before travel; use a purpose-limited device)'
   ui_label 'Unexpected adapters:' 'REVIEW (baseline not recorded)'
   printf '\n'
-  [[ "${radio_verdict}" == 'UNKNOWN' || "${bluetooth_exposure}" == 'UNKNOWN' || "${firewall_state}" == 'UNKNOWN' || "${vpn_state}" == 'UNKNOWN' ]] && readiness_unknown=1
-  [[ "${radio_verdict}" == 'FAIL' || "${bluetooth_service}" == 'FAIL' || "${bluetooth_exposure}" == 'FAIL' || "${firewall_state}" == 'FAIL' ]] && readiness_failed=1
+  [[ "${radio_verdict}" == 'UNKNOWN' || "${bluetooth_posture}" == 'UNKNOWN' || "${firewall_state}" == 'UNKNOWN' || "${vpn_state}" == 'UNKNOWN' ]] && readiness_unknown=1
+  [[ "${radio_verdict}" == 'FAIL' || "${bluetooth_posture}" == 'FAIL'* || "${firewall_state}" == 'FAIL' ]] && readiness_failed=1
   if (( readiness_unknown )); then
     ui_label 'Overall:' 'STATE UNKNOWN'
     return "${EXIT_UNKNOWN}"
   fi
   if (( readiness_failed )); then
     ui_label 'Overall:' 'NOT READY'
+    if [[ "${radio_verdict}" == 'FAIL' ]]; then
+      ui_note 'Recommended action: apply full radio lockdown (main-menu option 2).'
+    fi
     return "${EXIT_POLICY}"
   fi
-  if [[ "${radio_verdict}" == 'PASS' && "${bluetooth_service}" == 'PASS' ]]; then
+  if [[ "${radio_verdict}" == 'PASS' && "${bluetooth_posture}" == 'PASS' ]]; then
     ui_label 'Overall:' 'READY WITH REVIEW ITEMS'
     return 0
   fi

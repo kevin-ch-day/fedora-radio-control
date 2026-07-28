@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
-# Verified, reversible radio lockdown. This module is the only current runtime
-# location that performs radio or service state changes.
+# Verified full radio lockdown transaction.
 
-LOCKDOWN_LOG_DIR="${APPLICATION_ROOT}/logs"
 LOCKDOWN_LOG_FILE=''
 
 lockdown_log() {
@@ -10,16 +8,11 @@ lockdown_log() {
 }
 
 lockdown_begin_log() {
-  local timestamp invoking_user
-  timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  local invoking_user
+  begin_action_log 'lockdown' || return $?
+  LOCKDOWN_LOG_FILE="${ACTION_LOG_FILE}"
   invoking_user="${SUDO_USER:-$(id -un)}"
-  mkdir -p "${LOCKDOWN_LOG_DIR}"
-  LOCKDOWN_LOG_FILE="${LOCKDOWN_LOG_DIR}/${timestamp}_lockdown.log"
-  : > "${LOCKDOWN_LOG_FILE}"
-  chmod 600 "${LOCKDOWN_LOG_FILE}"
-  grant_invoking_user_log_access "${LOCKDOWN_LOG_FILE}" || true
-  ln -sfn "$(basename "${LOCKDOWN_LOG_FILE}")" "${LOCKDOWN_LOG_DIR}/latest.log"
-  lockdown_log "timestamp_utc=${timestamp}"
+  lockdown_log "timestamp_utc=$(date -u +%Y%m%dT%H%M%SZ)"
   lockdown_log "invoking_user=${invoking_user}"
   lockdown_log 'requested_action=lockdown'
 }
@@ -45,21 +38,23 @@ lockdown_log_state() {
 }
 
 lockdown_attempt() {
-  local description="$1"
+  local description="$1" status
   shift
   lockdown_log "attempt=${description}"
   if "$@" >/dev/null 2>&1; then
     lockdown_log "attempt_result=${description}:ok"
     return 0
+  else
+    status=$?
   fi
-  lockdown_log "attempt_result=${description}:failed"
+  lockdown_log "attempt_result=${description}:failed:exit=${status}"
   return 1
 }
 
 lockdown_apply() {
   local attempt_failed=0
 
-  lockdown_begin_log
+  lockdown_begin_log || return $?
   refresh_radio_state
   lockdown_log_state 'before'
 

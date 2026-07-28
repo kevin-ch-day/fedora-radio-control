@@ -2,9 +2,20 @@
 # Read-only collection and policy evaluation for radio status.
 
 STATE_QUERY_FAILED=0
+WIFI_QUERY_FAILED=0
+BLUETOOTH_QUERY_FAILED=0
+STATE_QUERY_SCOPE=''
 
 mark_query_failure() {
   STATE_QUERY_FAILED=1
+  case "${STATE_QUERY_SCOPE}" in
+    wifi) WIFI_QUERY_FAILED=1 ;;
+    bluetooth) BLUETOOTH_QUERY_FAILED=1 ;;
+    shared)
+      WIFI_QUERY_FAILED=1
+      BLUETOOTH_QUERY_FAILED=1
+      ;;
+  esac
 }
 
 json_field() {
@@ -76,19 +87,17 @@ rfkill_entries_disabled() {
 }
 
 evaluate_effective_state() {
-  if (( STATE_QUERY_FAILED )); then
+  if (( WIFI_QUERY_FAILED )); then
     WIFI_EFFECTIVE='unknown'
-    BLUETOOTH_EFFECTIVE='unknown'
-    return
-  fi
-
-  if [[ "${WIFI_RADIO_STATE}" == 'disabled' ]] && rfkill_entries_disabled "${WIFI_RFKILL[@]}"; then
+  elif [[ "${WIFI_RADIO_STATE}" == 'disabled' ]] && rfkill_entries_disabled "${WIFI_RFKILL[@]}"; then
     WIFI_EFFECTIVE='disabled'
   else
     WIFI_EFFECTIVE='not fully disabled'
   fi
 
-  if [[ "${BLUETOOTH_SERVICE_ACTIVE}" == 'inactive' ]] && \
+  if (( BLUETOOTH_QUERY_FAILED )); then
+    BLUETOOTH_EFFECTIVE='unknown'
+  elif [[ "${BLUETOOTH_SERVICE_ACTIVE}" == 'inactive' ]] && \
     rfkill_entries_disabled "${BLUETOOTH_RFKILL[@]}" && \
     { [[ "${BLUETOOTH_CONTROLLER}" != 'available' ]] || \
       { [[ "${BLUETOOTH_POWERED}" == 'no' ]] && [[ "${BLUETOOTH_DISCOVERABLE}" == 'no' ]] && [[ "${BLUETOOTH_PAIRABLE}" == 'no' ]]; }; }; then
@@ -100,10 +109,16 @@ evaluate_effective_state() {
 
 refresh_radio_state() {
   STATE_QUERY_FAILED=0
+  WIFI_QUERY_FAILED=0
+  BLUETOOTH_QUERY_FAILED=0
+  STATE_QUERY_SCOPE='shared'
   collect_rfkill
+  STATE_QUERY_SCOPE='wifi'
   collect_wifi_state
+  STATE_QUERY_SCOPE='bluetooth'
   collect_bluetooth_service_state
   collect_bluetooth_controller
+  STATE_QUERY_SCOPE=''
   evaluate_effective_state
 }
 
@@ -211,8 +226,6 @@ report_status() {
   case "${BLUETOOTH_CONTROLLER}" in
     available)
       printf '  Controller:            available\n'
-      printf '  Controller address:    %s\n' "${BLUETOOTH_ADDRESS}"
-      [[ -n "${BLUETOOTH_ALIAS}" ]] && printf '  Controller alias:      %s\n' "${BLUETOOTH_ALIAS}"
       ui_label 'Controller powered:' "${BLUETOOTH_POWERED}"
       ui_label 'Controller discoverable:' "${BLUETOOTH_DISCOVERABLE}"
       ui_label 'Controller pairable:' "${BLUETOOTH_PAIRABLE}"

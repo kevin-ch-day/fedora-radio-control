@@ -9,15 +9,9 @@ bluetooth_control_log() {
 }
 
 bluetooth_control_begin_log() {
-  local timestamp
-  timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
-  mkdir -p "${APPLICATION_ROOT}/logs"
-  BLUETOOTH_CONTROL_LOG_FILE="${APPLICATION_ROOT}/logs/${timestamp}_bluetooth-disable.log"
-  : > "${BLUETOOTH_CONTROL_LOG_FILE}"
-  chmod 600 "${BLUETOOTH_CONTROL_LOG_FILE}"
-  grant_invoking_user_log_access "${BLUETOOTH_CONTROL_LOG_FILE}" || true
-  ln -sfn "$(basename "${BLUETOOTH_CONTROL_LOG_FILE}")" "${APPLICATION_ROOT}/logs/latest.log"
-  bluetooth_control_log "timestamp_utc=${timestamp}"
+  begin_action_log 'bluetooth-disable' || return $?
+  BLUETOOTH_CONTROL_LOG_FILE="${ACTION_LOG_FILE}"
+  bluetooth_control_log "timestamp_utc=$(date -u +%Y%m%dT%H%M%SZ)"
   bluetooth_control_log "invoking_user=${SUDO_USER:-$(id -un)}"
   bluetooth_control_log 'requested_action=bluetooth_disable'
 }
@@ -36,19 +30,21 @@ bluetooth_control_log_state() {
 }
 
 bluetooth_control_attempt() {
-  local description="$1"
+  local description="$1" status
   shift
   bluetooth_control_log "attempt=${description}"
   if "$@" >/dev/null 2>&1; then
     bluetooth_control_log "attempt_result=${description}:ok"
     return 0
+  else
+    status=$?
   fi
-  bluetooth_control_log "attempt_result=${description}:failed"
+  bluetooth_control_log "attempt_result=${description}:failed:exit=${status}"
   return 1
 }
 
 bluetooth_disable_apply() {
-  bluetooth_control_begin_log
+  bluetooth_control_begin_log || return $?
   refresh_radio_state
   bluetooth_control_log_state 'before'
   if [[ "${BLUETOOTH_CONTROLLER}" == 'available' ]] && command -v bluetoothctl >/dev/null 2>&1; then
@@ -73,6 +69,6 @@ bluetooth_disable_apply() {
     error "bluetooth.service remains ${BLUETOOTH_SERVICE_ACTIVE}; Bluetooth is not fully disabled."
   fi
   error "Bluetooth disable was not verified. Log: ${BLUETOOTH_CONTROL_LOG_FILE}"
-  (( STATE_QUERY_FAILED )) && return "${EXIT_UNKNOWN}"
+  (( BLUETOOTH_QUERY_FAILED )) && return "${EXIT_UNKNOWN}"
   return "${EXIT_POLICY}"
 }

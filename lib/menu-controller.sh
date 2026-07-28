@@ -2,23 +2,48 @@
 # Interactive menu flow used by the internal application dispatcher.
 
 show_main_menu() {
-  local policy selection
+  local policy selection component_status blocker hardware_note autoconnect_count autoconnect_status
   {
-    ui_clear_screen
     refresh_radio_state
     policy="$(current_policy_result)"
-    ui_heading 'Fedora Radio Control'
-    ui_note 'DEF CON radio exposure posture — live, read-only state'
-    printf '\n  Policy:                %s\n' "$(ui_result "${policy}")"
-    ui_rule
-    printf '  Wi-Fi      NetworkManager: %-10s RFKill: %-12s Hardware block: %s\n' \
-      "${WIFI_RADIO_STATE}" "$(rfkill_summary "${WIFI_RFKILL[@]}")" \
-      "$(rfkill_hardware_block_present "${WIFI_RFKILL[@]}" && printf present || printf not-present)"
+    blocker="$(policy_reason)"
+    component_status="$(privileged_component_status)"
+    hardware_note='not present'
     if rfkill_hardware_block_present "${WIFI_RFKILL[@]}"; then
-      ui_note '  Wi-Fi hardware block prevents software from enabling that adapter.'
+      hardware_note='present — lockdown compatible'
     fi
-    printf '  Bluetooth Service: %-14s RFKill: %-12s Controller: %s\n' \
-      "${BLUETOOTH_SERVICE_ACTIVE}" "$(rfkill_summary "${BLUETOOTH_RFKILL[@]}")" "${BLUETOOTH_CONTROLLER}"
+    if autoconnect_count="$(readiness_wifi_autoconnect_count)"; then
+      if (( autoconnect_count == 0 )); then
+        autoconnect_status='none enabled'
+      else
+        autoconnect_status="REVIEW (${autoconnect_count} enabled; names omitted)"
+      fi
+    else
+      autoconnect_status='UNKNOWN (query failed)'
+    fi
+    ui_heading 'Fedora Radio Control'
+    ui_note 'DEF CON radio exposure posture — live state'
+    printf '\n  Policy:                %s\n' "$(ui_result "${policy}")"
+    [[ "${policy}" == 'LOCKED DOWN' ]] || ui_label 'Primary blocker:' "${blocker}"
+    ui_rule
+    printf '%s\n' 'Wi-Fi'
+    ui_label 'Radio:' "${WIFI_RADIO_STATE}"
+    ui_label 'RFKill:' "$(rfkill_summary "${WIFI_RFKILL[@]}")"
+    ui_label 'Hardware block:' "${hardware_note}"
+    ui_label 'Autoconnect profiles:' "${autoconnect_status}"
+    if rfkill_hardware_block_present "${WIFI_RFKILL[@]}"; then
+      ui_note '  Hardware block strengthens lockdown but prevents software enablement.'
+    fi
+    printf '\n%s\n' 'Bluetooth'
+    ui_label 'Service:' "${BLUETOOTH_SERVICE_ACTIVE}"
+    ui_label 'RFKill:' "$(rfkill_summary "${BLUETOOTH_RFKILL[@]}")"
+    ui_label 'Controller:' "${BLUETOOTH_CONTROLLER}"
+    printf '\n%s\n' 'System'
+    if [[ "${component_status}" == 'INSTALLED' ]]; then
+      ui_label 'Privileged component:' 'INSTALLED AND VERIFIED'
+    else
+      ui_label 'Privileged component:' "${component_status}"
+    fi
     ui_rule
     printf '%s\n' '[1] Show detailed radio status'
     printf '%s\n' '[2] Apply full radio lockdown'
@@ -36,8 +61,11 @@ show_main_menu() {
 }
 
 show_recent_activity() {
-  if [[ -L "${APPLICATION_ROOT}/logs/latest.log" && -r "${APPLICATION_ROOT}/logs/latest.log" ]]; then
-    tail -n 40 "${APPLICATION_ROOT}/logs/latest.log"
+  local latest_log='/var/log/fedora-radio-control/latest.log'
+  if (( EUID != 0 )); then
+    ui_note 'Action logs are protected. Review them with: sudo tail -n 40 /var/log/fedora-radio-control/latest.log'
+  elif [[ -L "${latest_log}" && -r "${latest_log}" ]]; then
+    tail -n 40 "${latest_log}"
   else
     ui_note 'No state-changing activity has been logged yet.'
   fi

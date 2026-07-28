@@ -98,6 +98,20 @@ assert_equals 'unknown' "${WIFI_EFFECTIVE}" 'RFKill query failure makes Wi-Fi st
 assert_equals 'STATE UNKNOWN' "$(current_policy_result)" 'RFKill query failure policy verdict'
 
 set_fixture
+systemctl() { return 1; }
+refresh_radio_state 2>/dev/null
+assert_equals 'disabled' "${WIFI_EFFECTIVE}" 'Bluetooth query failure does not invalidate Wi-Fi state'
+assert_equals 'unknown' "${BLUETOOTH_EFFECTIVE}" 'Bluetooth query failure is contained to Bluetooth state'
+
+systemctl() {
+  case "$*" in
+    *ActiveState*) printf '%s\n' "${MOCK_BLUETOOTH_ACTIVE}" ;;
+    *UnitFileState*) printf '%s\n' "${MOCK_BLUETOOTH_ENABLED}" ;;
+    *) return 1 ;;
+  esac
+}
+
+set_fixture
 command() {
   if [[ "${1:-}" == '-v' && "${2:-}" == 'bluetoothctl' ]]; then
     return 1
