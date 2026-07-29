@@ -53,11 +53,7 @@ def status(ui: ReportUI) -> int:
     ui.section("System")
     ui.label("Fedora:", os_name())
     ui.label("Hostname:", socket.gethostname() or "unavailable")
-    user = os.environ.get("USER", "unavailable")
-    invoking_user = os.environ.get("SUDO_USER", user)
-    ui.label("User:" if user == invoking_user else "Invoking user:", invoking_user)
-    if user != invoking_user:
-        ui.label("Effective user:", user)
+    ui.label("User:", os.environ.get("USER", "unavailable"))
 
     ui.section("Wi-Fi")
     ui.label("NetworkManager radio:", state.wifi_radio)

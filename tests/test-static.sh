@@ -14,7 +14,7 @@ fail() {
   exit 1
 }
 
-for file in run.sh install.sh VERSION pyproject.toml docs/architecture.md privileged/bash/helper.sh privileged/bash/wifi/state.sh privileged/bash/wifi/control.sh privileged/bash/bluetooth/state.sh privileged/bash/bluetooth/control.sh privileged/bash/vpn/state.sh src/fedora_radio_control/__init__.py src/fedora_radio_control/__main__.py src/fedora_radio_control/cli.py src/fedora_radio_control/menus.py src/fedora_radio_control/readiness.py src/fedora_radio_control/reports.py src/fedora_radio_control/state.py src/fedora_radio_control/system.py src/fedora_radio_control/ui.py privileged/bash/lib/common.sh privileged/bash/lib/logging.sh privileged/bash/lib/rfkill.sh privileged/bash/lib/radio-policy.sh privileged/bash/lib/status-report.sh privileged/bash/lib/radio-state.sh privileged/bash/lib/lockdown.sh tests/test-static.sh tests/test-python.sh tests/python/test_state.py tests/python/test_collectors.py tests/test-logging.sh tests/test-policy.sh tests/test-lockdown.sh tests/test-bluetooth-control.sh tests/test-wifi-control.sh tests/test-wifi-state.sh tests/test-vpn-state.sh README.md LICENSE logs/.gitkeep .gitignore; do
+for file in run.sh install.sh VERSION pyproject.toml docs/architecture.md privileged/bash/helper.sh privileged/bash/wifi/state.sh privileged/bash/wifi/control.sh privileged/bash/bluetooth/state.sh privileged/bash/bluetooth/control.sh src/fedora_radio_control/__init__.py src/fedora_radio_control/__main__.py src/fedora_radio_control/cli.py src/fedora_radio_control/menus.py src/fedora_radio_control/readiness.py src/fedora_radio_control/reports.py src/fedora_radio_control/state.py src/fedora_radio_control/system.py src/fedora_radio_control/ui.py privileged/bash/lib/common.sh privileged/bash/lib/logging.sh privileged/bash/lib/rfkill.sh privileged/bash/lib/radio-policy.sh privileged/bash/lib/lockdown.sh tests/test-static.sh tests/test-python.sh tests/python/test_cli.py tests/python/test_state.py tests/python/test_collectors.py tests/python/test_reports.py tests/python/test_system.py tests/python/test_ui.py tests/test-logging.sh tests/test-policy.sh tests/test-lockdown.sh tests/test-bluetooth-control.sh tests/test-wifi-control.sh tests/test-wifi-state.sh README.md LICENSE logs/.gitkeep .gitignore; do
   [[ -e "${file}" ]] || fail "Missing required file: ${file}"
 done
 
@@ -22,7 +22,7 @@ done
 grep -Fq 'package-dir = { "" = "src" }' pyproject.toml || fail 'Python package must use the src layout'
 grep -Fq 'requires-python = ">=3.10"' pyproject.toml || fail 'Python version support must be declared'
 
-for file in run.sh install.sh privileged/bash/helper.sh privileged/bash/wifi/state.sh privileged/bash/wifi/control.sh privileged/bash/bluetooth/state.sh privileged/bash/bluetooth/control.sh privileged/bash/vpn/state.sh privileged/bash/lib/common.sh privileged/bash/lib/logging.sh privileged/bash/lib/rfkill.sh privileged/bash/lib/radio-policy.sh privileged/bash/lib/status-report.sh privileged/bash/lib/radio-state.sh privileged/bash/lib/lockdown.sh tests/test-static.sh tests/test-logging.sh tests/test-policy.sh tests/test-lockdown.sh tests/test-bluetooth-control.sh tests/test-wifi-control.sh tests/test-wifi-state.sh tests/test-vpn-state.sh; do
+for file in run.sh install.sh privileged/bash/helper.sh privileged/bash/wifi/state.sh privileged/bash/wifi/control.sh privileged/bash/bluetooth/state.sh privileged/bash/bluetooth/control.sh privileged/bash/lib/common.sh privileged/bash/lib/logging.sh privileged/bash/lib/rfkill.sh privileged/bash/lib/radio-policy.sh privileged/bash/lib/lockdown.sh tests/test-static.sh tests/test-logging.sh tests/test-policy.sh tests/test-lockdown.sh tests/test-bluetooth-control.sh tests/test-wifi-control.sh tests/test-wifi-state.sh; do
   bash -n "${file}"
 done
 
@@ -46,7 +46,7 @@ activity_status=$?
 ./run.sh wifi profiles >/dev/null 2>&1
 wifi_profiles_status=$?
 ./run.sh bluetooth enable >/dev/null 2>&1
-bluetooth_enable_status=$?
+unsupported_bluetooth_status=$?
 ./run.sh </dev/null >/dev/null 2>&1
 closed_input_menu_status=$?
 printf '1\n0\n' | ./run.sh >/dev/null 2>&1
@@ -76,7 +76,7 @@ case "${activity_status}" in
   0|3) ;;
   *) fail "activity returned ${activity_status}, expected 0 or 3" ;;
 esac
-[[ "${bluetooth_enable_status}" -eq 2 ]] || fail "Unimplemented Bluetooth enable returned ${bluetooth_enable_status}, expected 2"
+[[ "${unsupported_bluetooth_status}" -eq 2 ]] || fail "Unsupported Bluetooth enable returned ${unsupported_bluetooth_status}, expected 2"
 case "${wifi_profiles_status}" in
   0|3) ;;
   *) fail "Wi-Fi profile inspection returned ${wifi_profiles_status}, expected 0 or 3" ;;
@@ -96,10 +96,9 @@ esac
 ./tests/test-bluetooth-control.sh
 ./tests/test-wifi-control.sh
 ./tests/test-wifi-state.sh
-./tests/test-vpn-state.sh
 
 for prohibited in 'nmcli device wifi rescan' 'systemctl start' 'systemctl enable' 'systemctl disable' 'systemctl unmask' 'nmcli connection modify'; do
-  if grep -Fq "${prohibited}" run.sh privileged/bash/wifi/*.sh privileged/bash/bluetooth/*.sh privileged/bash/vpn/*.sh privileged/bash/lib/*.sh; then
+  if grep -Fq "${prohibited}" run.sh privileged/bash/wifi/*.sh privileged/bash/bluetooth/*.sh privileged/bash/lib/*.sh; then
     fail "Runtime code contains prohibited mutation command: ${prohibited}"
   fi
 done
@@ -114,7 +113,7 @@ if grep -R --include='*.py' -Eq 'shell[[:space:]]*=[[:space:]]*True|os\.system|P
 fi
 
 for prohibited in 'nmcli radio wifi on' 'nmcli radio wifi off' 'rfkill block' 'rfkill unblock' 'systemctl stop' 'systemctl mask' 'bluetoothctl power'; do
-  if grep -Fl "${prohibited}" run.sh privileged/bash/wifi/*.sh privileged/bash/bluetooth/*.sh privileged/bash/vpn/*.sh privileged/bash/lib/*.sh | grep -Fxv 'privileged/bash/lib/lockdown.sh' | grep -Fxv 'privileged/bash/wifi/control.sh' | grep -Fxv 'privileged/bash/bluetooth/control.sh' >/dev/null; then
+  if grep -Fl "${prohibited}" run.sh privileged/bash/wifi/*.sh privileged/bash/bluetooth/*.sh privileged/bash/lib/*.sh | grep -Fxv 'privileged/bash/lib/lockdown.sh' | grep -Fxv 'privileged/bash/wifi/control.sh' | grep -Fxv 'privileged/bash/bluetooth/control.sh' >/dev/null; then
     fail "Mutation command appears outside an approved control module: ${prohibited}"
   fi
 done
@@ -133,7 +132,10 @@ if grep -Eq '\beval\b|bash[[:space:]]+-c|sh[[:space:]]+-c' install.sh privileged
 fi
 
 if command -v shellcheck >/dev/null 2>&1; then
-  shellcheck run.sh privileged/bash/wifi/state.sh privileged/bash/wifi/control.sh privileged/bash/bluetooth/state.sh privileged/bash/bluetooth/control.sh privileged/bash/vpn/state.sh privileged/bash/lib/common.sh privileged/bash/lib/logging.sh privileged/bash/lib/rfkill.sh privileged/bash/lib/radio-policy.sh privileged/bash/lib/status-report.sh privileged/bash/lib/radio-state.sh privileged/bash/lib/lockdown.sh tests/test-static.sh tests/test-logging.sh tests/test-policy.sh tests/test-lockdown.sh tests/test-bluetooth-control.sh tests/test-wifi-control.sh tests/test-wifi-state.sh tests/test-vpn-state.sh
+  # Modules exchange state after being sourced by the installed helper, which
+  # ShellCheck cannot follow from a source checkout. Test literals and mocked
+  # functions are likewise intentionally not expanded or called directly.
+  shellcheck -e SC1091,SC2016,SC2034,SC2329 run.sh privileged/bash/wifi/state.sh privileged/bash/wifi/control.sh privileged/bash/bluetooth/state.sh privileged/bash/bluetooth/control.sh privileged/bash/lib/common.sh privileged/bash/lib/logging.sh privileged/bash/lib/rfkill.sh privileged/bash/lib/radio-policy.sh privileged/bash/lib/lockdown.sh tests/test-static.sh tests/test-logging.sh tests/test-policy.sh tests/test-lockdown.sh tests/test-bluetooth-control.sh tests/test-wifi-control.sh tests/test-wifi-state.sh
 else
   printf 'SKIP: ShellCheck is not installed.\n'
 fi

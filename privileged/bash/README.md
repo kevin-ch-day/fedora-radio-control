@@ -1,8 +1,9 @@
 # Privileged Bash Runtime
 
-This directory contains the temporary Bash implementation of the verified,
-root-owned mutation helper. It is not part of the normal Python application
-and must not be launched directly from a checkout.
+This directory contains the minimal Bash implementation of the verified,
+root-owned mutation helper. Read-only collection, reporting, menus, and
+terminal display live in the normal Python application; this tree exists only
+for narrowly scoped radio mutations and must not be launched from a checkout.
 
 `install.sh` copies an explicit allowlist from this directory to
 `/usr/local/libexec/fedora-radio-control/`, with root ownership and restrictive
@@ -11,4 +12,4 @@ changes.
 
 New normal-user features belong under `src/fedora_radio_control/`. New
 privileged features must preserve this installed-runtime boundary and include
-mocked verification before they replace the remaining Bash helper code.
+mocked verification.

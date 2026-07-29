@@ -35,6 +35,14 @@ class CollectorTests(unittest.TestCase):
         self.assertEqual(collected.vpn_count, 2)
         self.assertEqual(collected.vpn_duration, "1h 01m")
 
+    def test_wifi_interface_is_collected_in_python_without_profile_or_ssid_data(self):
+        response = Result(0, "wlp0s20f3:wifi:connected\nenp0s31f6:ethernet:connected\n", "")
+        with patch.object(state, "run", return_value=response):
+            interface, known = state.wifi_interface()
+
+        self.assertEqual(interface, "wlp0s20f3")
+        self.assertTrue(known)
+
     def test_failed_wifi_query_does_not_make_bluetooth_state_unknown(self):
         collected = state.State(
             wifi_radio="unknown",

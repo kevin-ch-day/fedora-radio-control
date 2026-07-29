@@ -28,7 +28,7 @@ verify_runtime() {
   owner="$(stat -c '%u' "${RUNTIME_DIR}")"
   mode="$(stat -c '%a' "${RUNTIME_DIR}")"
   [[ "${owner}" == 0 ]] && (( ((8#${mode}) & 8#022) == 0 )) || return 1
-  for required in common.sh logging.sh wifi-state.sh bluetooth-state.sh rfkill.sh radio-policy.sh status-report.sh radio-state.sh wifi-control.sh bluetooth-control.sh lockdown.sh VERSION; do
+  for required in common.sh logging.sh wifi-state.sh bluetooth-state.sh rfkill.sh radio-policy.sh wifi-control.sh bluetooth-control.sh lockdown.sh VERSION; do
     path="${RUNTIME_DIR}/${required}"
     runtime_file_safe "${path}" || return 1
   done
@@ -42,7 +42,8 @@ verify_runtime || { helper_error 'Installed privileged component is invalid.'; e
 source "${RUNTIME_DIR}/common.sh"
 source "${RUNTIME_DIR}/wifi-state.sh"
 source "${RUNTIME_DIR}/bluetooth-state.sh"
-source "${RUNTIME_DIR}/radio-state.sh"
+source "${RUNTIME_DIR}/rfkill.sh"
+source "${RUNTIME_DIR}/radio-policy.sh"
 source "${RUNTIME_DIR}/wifi-control.sh"
 source "${RUNTIME_DIR}/bluetooth-control.sh"
 source "${RUNTIME_DIR}/lockdown.sh"

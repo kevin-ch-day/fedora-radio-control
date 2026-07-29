@@ -9,7 +9,8 @@ trap 'rm -rf "${TEST_DIR}"' EXIT
 source "${REPO_DIR}/privileged/bash/lib/common.sh"
 source "${REPO_DIR}/privileged/bash/wifi/state.sh"
 source "${REPO_DIR}/privileged/bash/bluetooth/state.sh"
-source "${REPO_DIR}/privileged/bash/lib/radio-state.sh"
+source "${REPO_DIR}/privileged/bash/lib/rfkill.sh"
+source "${REPO_DIR}/privileged/bash/lib/radio-policy.sh"
 APPLICATION_ROOT="${TEST_DIR}"
 source "${REPO_DIR}/privileged/bash/wifi/control.sh"
 

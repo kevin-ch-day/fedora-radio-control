@@ -12,8 +12,10 @@ source "${REPO_DIR}/privileged/bash/lib/common.sh"
 source "${REPO_DIR}/privileged/bash/wifi/state.sh"
 # shellcheck source=../bluetooth/state.sh
 source "${REPO_DIR}/privileged/bash/bluetooth/state.sh"
-# shellcheck source=../lib/radio-state.sh
-source "${REPO_DIR}/privileged/bash/lib/radio-state.sh"
+# shellcheck source=../lib/rfkill.sh
+source "${REPO_DIR}/privileged/bash/lib/rfkill.sh"
+# shellcheck source=../lib/radio-policy.sh
+source "${REPO_DIR}/privileged/bash/lib/radio-policy.sh"
 APPLICATION_ROOT="${TEST_DIR}"
 # shellcheck source=../bluetooth/control.sh
 source "${REPO_DIR}/privileged/bash/bluetooth/control.sh"

@@ -50,13 +50,6 @@ def show_profiles(_arguments: argparse.Namespace) -> int:
 
 
 def run_interactive(_arguments: argparse.Namespace) -> int:
-    if os.geteuid() == 0:
-        print(
-            "Error: Do not run the interactive application as root. "
-            "Start it as your normal user: ./run.sh",
-            file=sys.stderr,
-        )
-        return EXIT_USAGE
     if not require_fedora("nmcli", "rfkill", "systemctl"):
         return EXIT_UNKNOWN
     return MenuController(UI(), REPOSITORY).run()
@@ -64,11 +57,6 @@ def run_interactive(_arguments: argparse.Namespace) -> int:
 
 def delegate_operation(operation: PrivilegedOperation) -> Handler:
     return lambda _arguments: delegate(REPOSITORY, operation)
-
-
-def bluetooth_enable(_arguments: argparse.Namespace) -> int:
-    print("This state-changing action is not yet implemented. No changes were made.", file=sys.stderr)
-    return EXIT_USAGE
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -112,13 +100,20 @@ def build_parser() -> argparse.ArgumentParser:
     bluetooth_commands.add_parser("disable", help="disable and RFKill-block Bluetooth").set_defaults(
         handler=delegate_operation(PrivilegedOperation.BLUETOOTH_DISABLE)
     )
-    bluetooth_commands.add_parser("enable", help="not yet implemented").set_defaults(
-        handler=bluetooth_enable
-    )
     return parser
 
 
 def main(arguments: list[str] | None = None) -> int:
+    # The source checkout is intentionally never a privileged execution
+    # environment.  State changes are elevated only by the installed,
+    # root-owned helper through ``delegate``.
+    if os.geteuid() == 0:
+        print(
+            "Error: Do not run Fedora Radio Control as root. "
+            "Start it as your normal user: ./run.sh",
+            file=sys.stderr,
+        )
+        return EXIT_USAGE
     parser = build_parser()
     parsed = parser.parse_args(arguments)
     handler: Handler = getattr(parsed, "handler", run_interactive)

@@ -101,18 +101,3 @@ wifi_enable_apply() {
   error "Wi-Fi enable was not verified. A hardware RFKill block cannot be removed by software. Log: ${WIFI_CONTROL_LOG_FILE}"
   return "${final_status}"
 }
-
-wifi_confirm_enable() {
-  local reply
-  [[ -t 0 && -t 1 ]] || {
-    error 'Wi-Fi enable requires an interactive terminal confirmation.'
-    return "${EXIT_USAGE}"
-  }
-  printf '%s\n' 'WARNING: Enabling Wi-Fi increases radio exposure.' >&2
-  printf '%s\n' 'Existing NetworkManager profiles may reconnect automatically.' >&2
-  reply="$(prompt_read 'Type ENABLE-WIFI to continue: ')" || return "${EXIT_USAGE}"
-  [[ "${reply}" == 'ENABLE-WIFI' ]] || {
-    error 'Wi-Fi enable cancelled.'
-    return "${EXIT_POLICY}"
-  }
-}

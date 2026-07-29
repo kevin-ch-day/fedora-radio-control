@@ -23,30 +23,30 @@ class MenuController:
         interface, interface_known = wifi_interface()
         profiles = autoconnect_count()
         self.ui.heading("Fedora Radio Control")
-        self.ui.note("DEF CON radio exposure posture — live state")
+        self.ui.note("DEF CON // RADIO EXPOSURE POSTURE // LIVE")
         print()
         self.ui.label("Policy:", self.ui.result(state.policy))
         if state.policy != "LOCKED DOWN":
             self.ui.label("Primary blocker:", state.reason())
         self.ui.rule()
-        print("Wi-Fi")
+        self.ui.section("Wi-Fi")
         self.ui.label("Radio:", state.wifi_radio)
         self.ui.label("RFKill:", reports.rfkill_summary(state.wifi))
         self.ui.label("Hardware block:", "present — lockdown compatible" if any(item.hard == "blocked" for item in state.wifi) else "not present")
         self.ui.label("Active link:", f"CONNECTED ({interface})" if interface else "none" if interface_known else "UNKNOWN (query failed)")
         self.ui.label("Link duration:", connection.wifi_duration)
         self.ui.label("Autoconnect profiles:", "UNKNOWN (query failed)" if profiles is None else "none enabled" if profiles == 0 else f"REVIEW ({profiles} enabled; names omitted)")
-        print("\nBluetooth")
+        self.ui.section("Bluetooth")
         self.ui.label("Service:", state.bluetooth_active)
         self.ui.label("RFKill:", reports.rfkill_summary(state.bluetooth))
         self.ui.label("Controller:", state.controller)
-        print("\nSystem")
+        self.ui.section("System")
         status = component_status(self.repository)
         self.ui.label("Privileged component:", "INSTALLED AND VERIFIED" if status == "INSTALLED" else status)
         self.ui.label("VPN detected:", reports.vpn_text(connection))
         self.ui.rule()
         for option in ("[1] Show detailed radio status", "[2] Apply full radio lockdown", "[3] Wi-Fi controls", "[4] Bluetooth controls", "[5] DEF CON readiness check", "[6] Show recent activity", "[7] Clear screen", "[0] Exit"):
-            print(option)
+            self.ui.option(option)
         self.ui.rule()
         return self.ui.select(0, 7)
 
@@ -63,7 +63,7 @@ class MenuController:
             self.ui.label("Hardware constraint:", "HARDWARE BLOCKED")
         self.ui.rule()
         for option in ("[1] Show detailed Wi-Fi state", "[2] Review saved profile autoconnect status", "[3] Disable and RFKill-block Wi-Fi", "[4] Enable Wi-Fi radio (explicit confirmation required)", "[0] Back"):
-            print(option)
+            self.ui.option(option)
         self.ui.rule()
         return self.ui.select(0, 4)
 
@@ -75,10 +75,10 @@ class MenuController:
         self.ui.label("RFKill:", reports.rfkill_summary(state.bluetooth))
         self.ui.label("Controller:", state.controller)
         self.ui.rule()
-        for option in ("[1] Show detailed Bluetooth state", "[2] Disable and RFKill-block Bluetooth", "[3] Enable Bluetooth [Not yet implemented]", "[0] Back"):
-            print(option)
+        for option in ("[1] Show detailed Bluetooth state", "[2] Disable and RFKill-block Bluetooth", "[0] Back"):
+            self.ui.option(option)
         self.ui.rule()
-        return self.ui.select(0, 3)
+        return self.ui.select(0, 2)
 
     def run(self) -> int:
         while True:
@@ -87,7 +87,7 @@ class MenuController:
                 print("\nInput closed. Exiting menu without changes.")
                 return EXIT_OK
             if selection == -1:
-                print("Invalid selection. Please choose a numbered option.")
+                self.ui.alert("Invalid selection. Please choose a numbered option.")
             elif selection == 0:
                 return EXIT_OK
             elif selection == 1:
@@ -103,7 +103,7 @@ class MenuController:
             elif selection == 6:
                 delegate(self.repository, PrivilegedOperation.RECENT_ACTIVITY); self.ui.pause()
             elif selection == 7 and sys.stdout.isatty():
-                print("\033[2J\033[H", end="")
+                self.ui.clear()
 
     def _run_wifi(self) -> None:
         while True:
@@ -112,7 +112,7 @@ class MenuController:
                 print("\n")
                 return
             if selected == -1:
-                print("Invalid selection.")
+                self.ui.alert("Invalid selection.")
             elif selected == 1:
                 reports.wifi_detail(self.ui); self.ui.pause()
             elif selected == 2:
@@ -129,11 +129,8 @@ class MenuController:
                 print("\n")
                 return
             if selected == -1:
-                print("Invalid selection.")
+                self.ui.alert("Invalid selection.")
             elif selected == 1:
                 reports.bluetooth_detail(self.ui); self.ui.pause()
             elif selected == 2:
                 delegate(self.repository, PrivilegedOperation.BLUETOOTH_DISABLE); self.ui.pause()
-            elif selected == 3:
-                print("This state-changing action is not yet implemented. No changes were made.")
-                self.ui.pause()

@@ -23,8 +23,8 @@ RUNTIME_DIR = Path("/usr/local/libexec/fedora-radio-control")
 HELPER = RUNTIME_DIR / "radio-control-privileged"
 RUNTIME_FILES = (
     "radio-control-privileged", "common.sh", "logging.sh", "wifi-state.sh",
-    "bluetooth-state.sh", "rfkill.sh", "radio-policy.sh", "status-report.sh",
-    "radio-state.sh", "wifi-control.sh", "bluetooth-control.sh", "lockdown.sh", "VERSION",
+    "bluetooth-state.sh", "rfkill.sh", "radio-policy.sh",
+    "wifi-control.sh", "bluetooth-control.sh", "lockdown.sh", "VERSION",
 )
 
 
@@ -92,9 +92,20 @@ def _safe(path: Path, directory: bool = False) -> bool:
             and (stat.S_IMODE(info.st_mode) & 0o022) == 0)
 
 
+def _publicly_traversable(path: Path) -> bool:
+    """Return whether a normal user can inspect an installed runtime directory."""
+    try:
+        info = path.lstat()
+    except OSError:
+        return False
+    return stat.S_ISDIR(info.st_mode) and bool(stat.S_IMODE(info.st_mode) & stat.S_IXOTH)
+
+
 def component_status(repository: Path) -> str:
     if not _safe(RUNTIME_DIR, directory=True):
         return "MISSING"
+    if not _publicly_traversable(RUNTIME_DIR):
+        return "NOT ACCESSIBLE"
     if not all(_safe(RUNTIME_DIR / name) for name in RUNTIME_FILES):
         return "INVALID"
     try:
@@ -106,8 +117,12 @@ def component_status(repository: Path) -> str:
 def delegate(repository: Path, operation: PrivilegedOperation) -> int:
     status = component_status(repository)
     if status != "INSTALLED":
-        message = ("The privileged Fedora Radio Control component is not installed. Run: sudo ./install.sh"
-                   if status == "MISSING" else "The privileged component is invalid or version-mismatched. Run: sudo ./install.sh --verify")
+        if status == "MISSING":
+            message = "The privileged Fedora Radio Control component is not installed. Run: sudo ./install.sh"
+        elif status == "NOT ACCESSIBLE":
+            message = "The privileged component cannot be verified by your normal user. Run: sudo ./install.sh"
+        else:
+            message = "The privileged component is invalid or version-mismatched. Run: sudo ./install.sh --verify"
         print(f"Error: {message}", file=os.sys.stderr)
         return EXIT_UNKNOWN
     command = [str(HELPER), operation.value]

@@ -1,4 +1,4 @@
-"""Terminal output and interaction for the unprivileged Python frontend."""
+"""Terminal rendering and interaction for the unprivileged Python frontend."""
 
 from __future__ import annotations
 
@@ -7,47 +7,106 @@ import sys
 
 
 class UI:
-    """Keep terminal styling and prompt behavior out of radio-policy code."""
+    """Render an industrial, high-contrast console without sacrificing plain output."""
 
-    def __init__(self) -> None:
-        self.color = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
+    _RESET = "\033[0m"
+    _GRAPHITE = "90"
+    _PAPER = "1;97"
+    _SIGNAL = "1;36"
+    _SAFE = "1;32"
+    _REVIEW = "1;33"
+    _DANGER = "1;31"
+    _INFO = "36"
+
+    def __init__(self, color: bool | None = None) -> None:
+        self.color = self._supports_color() if color is None else color
+
+    @staticmethod
+    def _supports_color() -> bool:
+        return (
+            sys.stdout.isatty()
+            and os.environ.get("TERM", "") != "dumb"
+            and "NO_COLOR" not in os.environ
+        )
 
     def _style(self, value: str, code: str) -> str:
-        return f"\033[{code}m{value}\033[0m" if self.color else value
+        return f"\033[{code}m{value}{self._RESET}" if self.color else value
+
+    def _tone(self, value: object) -> str:
+        text = str(value)
+        normalized = text.upper()
+        if normalized.startswith(("LOCKED DOWN", "DISABLED", "BLOCKED", "INACTIVE", "PASS", "READY")):
+            return self._style(text, self._SAFE)
+        if normalized in {"NONE", "NOT DETECTED", "NOT APPLICABLE", "INSTALLED AND VERIFIED"}:
+            return self._style(text, self._SAFE)
+        if normalized.startswith(("FAIL", "NOT LOCKED", "NOT FULLY", "NOT ACCESSIBLE", "UNBLOCKED", "MISSING", "INVALID", "ACTIVE", "ENABLED")):
+            return self._style(text, self._DANGER)
+        if normalized.startswith(("STATE UNKNOWN", "UNKNOWN", "REVIEW", "HARDWARE BLOCKED")):
+            return self._style(text, self._REVIEW)
+        if normalized.startswith("INFORMATIONAL"):
+            return self._style(text, self._INFO)
+        return text
 
     def heading(self, value: str) -> None:
-        print(self._style(value, "1;36"))
-        print("============================================================")
+        marker = self._style("[ FRC ]", self._DANGER)
+        title = self._style(f" // {value.upper()}", self._PAPER)
+        print(f"{marker}{title}")
+        print(self._style("=" * 27 + "//" + "=" * 31, self._GRAPHITE))
 
     def section(self, value: str) -> None:
         print()
-        print(self._style(value, "1"))
+        marker = self._style("[", self._DANGER)
+        title = self._style(f" {value.upper()} ", self._PAPER)
+        print(f"{marker}{title}{self._style("]", self._DANGER)}")
 
-    @staticmethod
-    def label(name: str, value: object) -> None:
-        print(f"  {name:<22} {value}")
+    def label(self, name: str, value: object) -> None:
+        label = self._style(f"  {name:<22}", self._GRAPHITE)
+        print(f"{label} {self._tone(value)}")
 
-    @staticmethod
-    def rule() -> None:
-        print("------------------------------------------------------------")
+    def rule(self) -> None:
+        print(self._style("-" * 27 + "//" + "-" * 31, self._GRAPHITE))
 
     def note(self, value: str) -> None:
-        print(self._style(value, "2"))
+        print(self._style(f"// {value}", self._GRAPHITE))
 
     def result(self, value: str) -> str:
-        if value in {"LOCKED DOWN", "DISABLED"}:
-            return self._style(value, "32")
-        if value in {"NOT LOCKED DOWN", "STATE UNKNOWN", "NOT FULLY DISABLED"}:
-            return self._style(value, "31")
-        return self._style(value, "33")
+        normalized = value.upper()
+        if normalized.startswith(("LOCKED DOWN", "DISABLED", "BLOCKED", "PASS", "READY")):
+            badge = self._style("[ SAFE ]", self._SAFE)
+        elif normalized.startswith(("STATE UNKNOWN", "UNKNOWN", "REVIEW")):
+            badge = self._style("[ REVIEW ]", self._REVIEW)
+        else:
+            badge = self._style("[ ALERT ]", self._DANGER)
+        return f"{badge} {self._tone(value)}"
 
-    @staticmethod
-    def select(low: int, high: int) -> int | None:
+    def option(self, value: str) -> None:
+        prefix, separator, label = value.partition("]")
+        if not separator:
+            print(value)
+            return
+        code = self._GRAPHITE if prefix == "[0" else self._SIGNAL
+        normalized = label.lower()
+        if "enable" in normalized:
+            label = self._style(label, self._REVIEW)
+        elif "lockdown" in normalized or "disable" in normalized:
+            label = self._style(label, self._DANGER)
+        elif prefix == "[0":
+            label = self._style(label, self._GRAPHITE)
+        print(f"{self._style(prefix + separator, code)}{label}")
+
+    def alert(self, value: str) -> None:
+        print(self._style(f"!! {value}", self._DANGER))
+
+    def select(self, low: int, high: int) -> int | None:
         try:
-            value = input("Selection: ").strip()
+            value = input(self._style(f"COMMAND [{low}-{high}] > ", self._SIGNAL)).strip()
         except EOFError:
             return None
         return int(value) if value.isdigit() and low <= int(value) <= high else -1
+
+    def clear(self) -> None:
+        if sys.stdout.isatty():
+            print("\033[2J\033[H", end="")
 
     @staticmethod
     def pause() -> None:

@@ -6,6 +6,7 @@ import os
 from typing import Protocol
 import time
 
+from .reports import vpn_text
 from .state import autoconnect_count, collect, connections, wifi_interface
 from .system import EXIT_OK, EXIT_POLICY, EXIT_UNKNOWN, exists, run
 
@@ -42,12 +43,6 @@ def _kernel_age() -> str:
     return f"REVIEW (running kernel package installed {(current - installed) // 86400} days ago; update status not verified)"
 
 
-def _vpn_text(connection) -> str:
-    if connection.vpn_state == "active":
-        return f"INFORMATIONAL ({connection.vpn_count} active; approx. {connection.vpn_duration})"
-    return "INFORMATIONAL (none detected)" if connection.vpn_state == "inactive" else f"UNKNOWN ({connection.vpn_duration})"
-
-
 def report(ui: ReadinessUI) -> int:
     state, connection = collect(), connections()
     interface, interface_known = wifi_interface()
@@ -75,7 +70,7 @@ def report(ui: ReadinessUI) -> int:
     ui.label("Wireless zone:", zone)
     ui.label("Wi-Fi autoconnect:", "UNKNOWN (query failed)" if autoconnect is None else "PASS (none enabled)" if autoconnect == 0 else f"REVIEW ({autoconnect} enabled; names omitted)")
     ui.label("Firewall service:", firewall)
-    ui.label("VPN detected:", _vpn_text(connection))
+    ui.label("VPN detected:", vpn_text(connection))
     ui.label("Kernel patch freshness:", _kernel_age())
     ui.label("Device hygiene:", "REVIEW (patch before travel; use a purpose-limited device)")
     ui.label("Unexpected adapters:", "REVIEW (baseline not recorded)")

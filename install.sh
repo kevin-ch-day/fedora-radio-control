@@ -11,6 +11,10 @@ readonly INSTALL_DIR='/usr/local/libexec/fedora-radio-control'
 readonly LOG_DIR='/var/log/fedora-radio-control'
 readonly RUNTIME_DIR='/run/fedora-radio-control'
 INSTALL_STAGE=''
+readonly -a OBSOLETE_FILES=(
+  'status-report.sh'
+  'radio-state.sh'
+)
 readonly -a SOURCE_FILES=(
   'privileged/bash/helper.sh:radio-control-privileged:0755'
   'privileged/bash/lib/common.sh:common.sh:0640'
@@ -19,8 +23,6 @@ readonly -a SOURCE_FILES=(
   'privileged/bash/bluetooth/state.sh:bluetooth-state.sh:0640'
   'privileged/bash/lib/rfkill.sh:rfkill.sh:0640'
   'privileged/bash/lib/radio-policy.sh:radio-policy.sh:0640'
-  'privileged/bash/lib/status-report.sh:status-report.sh:0640'
-  'privileged/bash/lib/radio-state.sh:radio-state.sh:0640'
   'privileged/bash/wifi/control.sh:wifi-control.sh:0640'
   'privileged/bash/bluetooth/control.sh:bluetooth-control.sh:0640'
   'privileged/bash/lib/lockdown.sh:lockdown.sh:0640'
@@ -78,11 +80,21 @@ safe_file() {
   [[ "${owner}" == 0 ]] && (( ((8#${mode}) & 8#022) == 0 ))
 }
 
+remove_obsolete_runtime_files() {
+  local target path
+  for target in "${OBSOLETE_FILES[@]}"; do
+    path="${INSTALL_DIR}/${target}"
+    [[ -e "${path}" || -L "${path}" ]] || continue
+    safe_file "${path}" || { error "Obsolete installed file is unsafe: ${target}"; return 3; }
+    rm -f -- "${path}"
+  done
+}
+
 verify_installation() {
   local record _source target _mode owner mode
   [[ -d "${INSTALL_DIR}" && ! -L "${INSTALL_DIR}" ]] || { error "Missing installed directory: ${INSTALL_DIR}"; return 3; }
   owner="$(stat -c '%u' "${INSTALL_DIR}")"; mode="$(stat -c '%a' "${INSTALL_DIR}")"
-  [[ "${owner}" == 0 ]] && (( ((8#${mode}) & 8#022) == 0 )) || { error 'Installed directory ownership or permissions are unsafe.'; return 3; }
+  [[ "${owner}" == 0 && "${mode}" == 755 ]] || { error 'Installed directory must be root-owned with mode 0755 for normal-user verification.'; return 3; }
   for record in "${SOURCE_FILES[@]}"; do
     IFS=: read -r _source target _mode <<< "${record}"
     safe_file "${INSTALL_DIR}/${target}" || { error "Installed file is missing or unsafe: ${target}"; return 3; }
@@ -105,6 +117,7 @@ install_runtime() {
   done
   verify_staged_syntax "${INSTALL_STAGE}/runtime"
   prepare_install_directory
+  remove_obsolete_runtime_files
   for record in "${SOURCE_FILES[@]}"; do
     IFS=: read -r _source target _mode <<< "${record}"
     install -o root -g root -m "$(stat -c '%a' "${INSTALL_STAGE}/runtime/${target}")" "${INSTALL_STAGE}/runtime/${target}" "${INSTALL_DIR}/.${target}.new"

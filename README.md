@@ -48,7 +48,7 @@ not collect credentials.
 ./run.sh wifi disable
 ./run.sh wifi enable
 
-# Bluetooth disable (enable is intentionally not yet implemented)
+# Bluetooth disable
 ./run.sh bluetooth disable
 
 # Read a concise, root-protected action history
@@ -77,6 +77,13 @@ non-writable but world-traversable/executable, so the normal-user dashboard
 can verify their integrity. Supporting mutation modules remain readable only
 by root.
 
+If the dashboard shows `NOT ACCESSIBLE` for the privileged component, its
+directory cannot be inspected by the normal user. Repair that installation
+with `sudo ./install.sh`; a healthy installed directory is root-owned mode
+`0755` while the supporting files remain root-readable only.
+The same install step prunes superseded, root-owned helper display modules
+from prior releases; it never removes user files or action logs.
+
 Action logs are root-protected under `/var/log/fedora-radio-control/`. Each
 log uses a stable `key=value` schema with action metadata, timestamped state
 snapshots, command outcomes, and a final verified result. Values are sanitized
@@ -92,8 +99,8 @@ For full detail, use `sudo tail -n 80 /var/log/fedora-radio-control/latest.log`.
 `run.sh` is the sole supported public entry point. It resolves the repository
 path and starts the Python package from `src/`. Running `./run.sh` with no
 arguments opens the menu, which refreshes live state before each action.
-Bluetooth enable remains shown as not implemented; it does not run placeholder
-commands or change system state.
+Bluetooth enable is intentionally not offered; the application exposes no
+placeholder commands or unverified state changes.
 
 ## Internal layout
 
@@ -117,7 +124,6 @@ while its mutation paths are migrated separately:
 privileged/bash/helper.sh       # installed root-owned helper entry point
 privileged/bash/wifi/           # verified Wi-Fi mutation and state helpers
 privileged/bash/bluetooth/      # verified Bluetooth mutation and state helpers
-privileged/bash/vpn/            # helper-only VPN state support
 privileged/bash/lib/            # helper policy, locking, and log support
 ```
 
@@ -131,15 +137,23 @@ Normal menu refreshes do not clear the screen, so terminal scrollback and
 `sudo` prompts do not leave a large blank gap. Clear-screen control characters
 are never emitted when output is redirected.
 
+Interactive terminals use a restrained industrial console theme: a stark
+`[ FRC ]` masthead, graphite broken-line dividers, white subsystem headers,
+cyan controls, green verified-safe states, amber review states, and red
+exposure/alert markers. Main policy results also carry explicit `[ SAFE ]`,
+`[ REVIEW ]`, or `[ ALERT ]` badges, so meaning remains visible without
+color. It is functional color rather than a signal of policy success; always
+read the text. Color is automatically omitted from redirected output and can
+be disabled with `NO_COLOR=1 ./run.sh`.
+
 The menu exits safely without changing anything if input closes (for example,
-with Ctrl+D). When started through `sudo`, status reports both the invoking
-user and the effective `root` account for audit clarity.
+with Ctrl+D).
 
 The Wi-Fi submenu includes a read-only saved-profile autoconnect inspection.
 Wi-Fi enable requires a typed terminal confirmation because it can allow saved
-profiles to reconnect. Bluetooth enable remains unavailable until a separate
-exposure-confirmation and recovery path is implemented and tested. `sudo` is
-required only for state-changing commands.
+profiles to reconnect. Bluetooth enable is intentionally absent until a
+separate exposure-confirmation and recovery path is implemented and tested.
+`sudo` is required only for state-changing commands.
 
 The supported read-only commands use machine-readable output where the
 platform provides it and verify the reported policy rather than relying on a
@@ -239,9 +253,9 @@ implemented and write sanitized logs. Bluetooth disable RFKill-blocks the
 radio, stops `bluetooth.service`, and powers off an available controller as a
 best-effort step; it also applies a runtime-only systemd mask before stopping
 the service to prevent D-Bus activation from restarting it. The mask is
-cleared at reboot and will be explicitly removed by the future Bluetooth
-enable action. Final state verification is authoritative. Bluetooth enable
-remains unimplemented. Read-only status calls do not create logs, and no
+cleared at reboot; Bluetooth restoration is deliberately outside this
+application until a verified recovery path exists. Final state verification is
+authoritative. Read-only status calls do not create logs, and no
 persistent systemd boot-time changes are made. NetworkManager may retain its
 Wi-Fi radio preference across a NetworkManager restart or reboot; use the
 explicit Wi-Fi enable action when reopening that radio is intended.

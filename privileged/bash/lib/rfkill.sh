@@ -42,32 +42,3 @@ rfkill_entries_disabled() {
     [[ "${soft}" == 'blocked' || "${hard}" == 'blocked' ]] || return 1
   done
 }
-
-rfkill_summary() {
-  local entry _index _device soft hard
-  (( $# > 0 )) || { printf 'NOT DETECTED'; return; }
-  for entry in "$@"; do
-    IFS='|' read -r _index _device soft hard <<< "${entry}"
-    [[ "${soft}" == 'blocked' || "${hard}" == 'blocked' ]] || { printf 'UNBLOCKED'; return; }
-  done
-  printf 'BLOCKED'
-}
-
-rfkill_hardware_block_present() {
-  local entry _index _device _soft hard
-  for entry in "$@"; do
-    IFS='|' read -r _index _device _soft hard <<< "${entry}"
-    [[ "${hard}" == 'blocked' ]] && return 0
-  done
-  return 1
-}
-
-print_rfkill_entries() {
-  local entry index device soft hard
-  for entry in "$@"; do
-    IFS='|' read -r index device soft hard <<< "${entry}"
-    printf '\n  [%s] %s\n' "${index}" "${device}"
-    printf '      Soft blocked: %s\n' "$([[ "${soft}" == 'blocked' ]] && printf yes || printf no)"
-    printf '      Hard blocked: %s\n' "$([[ "${hard}" == 'blocked' ]] && printf yes || printf no)"
-  done
-}
