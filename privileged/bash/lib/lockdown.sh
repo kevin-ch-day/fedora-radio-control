@@ -4,50 +4,54 @@
 LOCKDOWN_LOG_FILE=''
 
 lockdown_log() {
-  printf '%s\n' "$*" >> "${LOCKDOWN_LOG_FILE}"
+  action_log_write "${LOCKDOWN_LOG_FILE}" "$1" "$2"
 }
 
 lockdown_begin_log() {
-  local invoking_user
   begin_action_log 'lockdown' || return $?
   LOCKDOWN_LOG_FILE="${ACTION_LOG_FILE}"
-  invoking_user="${SUDO_USER:-$(id -un)}"
-  lockdown_log "timestamp_utc=$(date -u +%Y%m%dT%H%M%SZ)"
-  lockdown_log "invoking_user=${invoking_user}"
-  lockdown_log 'requested_action=lockdown'
+  action_log_write "${LOCKDOWN_LOG_FILE}" 'requested_action' 'lockdown'
 }
 
 lockdown_log_state() {
   local phase="$1"
   local entry index device soft hard
-  lockdown_log "state_phase=${phase}"
-  lockdown_log "wifi_networkmanager=${WIFI_RADIO_STATE}"
-  lockdown_log "wifi_effective=${WIFI_EFFECTIVE}"
+  action_log_event "${LOCKDOWN_LOG_FILE}" 'state_snapshot'
+  lockdown_log 'state_phase' "${phase}"
+  lockdown_log 'wifi_networkmanager' "${WIFI_RADIO_STATE}"
+  lockdown_log 'wifi_effective' "${WIFI_EFFECTIVE}"
   for entry in "${WIFI_RFKILL[@]}"; do
     IFS='|' read -r index device soft hard <<< "${entry}"
-    lockdown_log "wifi_rfkill=${index}:${device}:soft=${soft}:hard=${hard}"
+    lockdown_log 'wifi_rfkill' "${index}:${device}:soft=${soft}:hard=${hard}"
   done
-  lockdown_log "bluetooth_service_active=${BLUETOOTH_SERVICE_ACTIVE}"
-  lockdown_log "bluetooth_service_enabled=${BLUETOOTH_SERVICE_ENABLED}"
-  lockdown_log "bluetooth_controller=${BLUETOOTH_CONTROLLER}"
-  lockdown_log "bluetooth_effective=${BLUETOOTH_EFFECTIVE}"
+  lockdown_log 'bluetooth_service_active' "${BLUETOOTH_SERVICE_ACTIVE}"
+  lockdown_log 'bluetooth_service_enabled' "${BLUETOOTH_SERVICE_ENABLED}"
+  lockdown_log 'bluetooth_controller' "${BLUETOOTH_CONTROLLER}"
+  lockdown_log 'bluetooth_effective' "${BLUETOOTH_EFFECTIVE}"
   for entry in "${BLUETOOTH_RFKILL[@]}"; do
     IFS='|' read -r index device soft hard <<< "${entry}"
-    lockdown_log "bluetooth_rfkill=${index}:${device}:soft=${soft}:hard=${hard}"
+    lockdown_log 'bluetooth_rfkill' "${index}:${device}:soft=${soft}:hard=${hard}"
   done
 }
 
 lockdown_attempt() {
   local description="$1" status
   shift
-  lockdown_log "attempt=${description}"
+  action_log_event "${LOCKDOWN_LOG_FILE}" 'command_attempt'
+  lockdown_log 'attempt' "${description}"
   if "$@" >/dev/null 2>&1; then
-    lockdown_log "attempt_result=${description}:ok"
+    action_log_event "${LOCKDOWN_LOG_FILE}" 'command_result'
+    lockdown_log 'attempt' "${description}"
+    lockdown_log 'result' 'ok'
+    lockdown_log 'exit_code' '0'
     return 0
   else
     status=$?
   fi
-  lockdown_log "attempt_result=${description}:failed:exit=${status}"
+  action_log_event "${LOCKDOWN_LOG_FILE}" 'command_result'
+  lockdown_log 'attempt' "${description}"
+  lockdown_log 'result' 'failed'
+  lockdown_log 'exit_code' "${status}"
   return 1
 }
 
@@ -64,9 +68,13 @@ lockdown_apply() {
   if [[ "${BLUETOOTH_CONTROLLER}" == 'available' ]] && command -v bluetoothctl >/dev/null 2>&1; then
     lockdown_attempt 'power_off_bluetooth_controller' bluetoothctl --timeout 5 power off || attempt_failed=1
   elif [[ "${BLUETOOTH_CONTROLLER}" == 'tool-unavailable' ]]; then
-    lockdown_log 'attempt=power_off_bluetooth_controller:skipped_tool_unavailable'
+    action_log_event "${LOCKDOWN_LOG_FILE}" 'command_skipped'
+    lockdown_log 'attempt' 'power_off_bluetooth_controller'
+    lockdown_log 'reason' 'tool_unavailable'
   else
-    lockdown_log 'attempt=power_off_bluetooth_controller:skipped_no_controller'
+    action_log_event "${LOCKDOWN_LOG_FILE}" 'command_skipped'
+    lockdown_log 'attempt' 'power_off_bluetooth_controller'
+    lockdown_log 'reason' 'no_controller'
   fi
   lockdown_attempt 'block_bluetooth_rfkill' rfkill block bluetooth || attempt_failed=1
   lockdown_attempt 'runtime_mask_bluetooth_service' systemctl mask --runtime bluetooth.service || attempt_failed=1
@@ -75,18 +83,18 @@ lockdown_apply() {
   refresh_radio_state
   lockdown_log_state 'after'
   if [[ "$(current_policy_result)" == 'LOCKED DOWN' ]]; then
-    lockdown_log 'final_result=LOCKED_DOWN'
+    action_log_result "${LOCKDOWN_LOG_FILE}" 'LOCKED_DOWN' "${EXIT_OK}"
     printf 'Lockdown verified. Log: %s\n' "${LOCKDOWN_LOG_FILE}"
     return "${EXIT_OK}"
   fi
 
   if (( STATE_QUERY_FAILED )); then
-    lockdown_log 'final_result=STATE_UNKNOWN'
+    action_log_result "${LOCKDOWN_LOG_FILE}" 'STATE_UNKNOWN' "${EXIT_UNKNOWN}"
     error "Lockdown could not be verified. Log: ${LOCKDOWN_LOG_FILE}"
     return "${EXIT_UNKNOWN}"
   fi
 
-  lockdown_log 'final_result=NOT_LOCKED_DOWN'
+  action_log_result "${LOCKDOWN_LOG_FILE}" 'NOT_LOCKED_DOWN' "${EXIT_POLICY}"
   error "Lockdown was not verified. Log: ${LOCKDOWN_LOG_FILE}"
   (( attempt_failed )) && return "${EXIT_POLICY}"
   return "${EXIT_POLICY}"

@@ -7,16 +7,16 @@ TEST_DIR="$(mktemp -d)"
 trap 'rm -rf "${TEST_DIR}"' EXIT
 
 # shellcheck source=../lib/common.sh
-source "${REPO_DIR}/lib/common.sh"
+source "${REPO_DIR}/privileged/bash/lib/common.sh"
 # shellcheck source=../wifi/state.sh
-source "${REPO_DIR}/wifi/state.sh"
+source "${REPO_DIR}/privileged/bash/wifi/state.sh"
 # shellcheck source=../bluetooth/state.sh
-source "${REPO_DIR}/bluetooth/state.sh"
+source "${REPO_DIR}/privileged/bash/bluetooth/state.sh"
 # shellcheck source=../lib/radio-state.sh
-source "${REPO_DIR}/lib/radio-state.sh"
+source "${REPO_DIR}/privileged/bash/lib/radio-state.sh"
 APPLICATION_ROOT="${TEST_DIR}"
 # shellcheck source=../lib/lockdown.sh
-source "${REPO_DIR}/lib/lockdown.sh"
+source "${REPO_DIR}/privileged/bash/lib/lockdown.sh"
 
 MOCK_WIFI='enabled'
 MOCK_WIFI_BLOCK='unblocked'
@@ -87,5 +87,7 @@ grep -Fq 'final_result=LOCKED_DOWN' "${LOCKDOWN_LOG_FILE}" || fail 'verified res
 grep -Fq 'attempt=disable_networkmanager_wifi' "${LOCKDOWN_LOG_FILE}" || fail 'Wi-Fi disable was not logged'
 grep -Fq 'attempt=stop_bluetooth_service' "${LOCKDOWN_LOG_FILE}" || fail 'Bluetooth stop was not logged'
 grep -Fq 'attempt=runtime_mask_bluetooth_service' "${LOCKDOWN_LOG_FILE}" || fail 'Bluetooth runtime mask was not logged'
+grep -Fq 'event=state_snapshot' "${LOCKDOWN_LOG_FILE}" || fail 'state snapshots were not logged'
+grep -Fq 'event=action_completed' "${LOCKDOWN_LOG_FILE}" || fail 'action completion was not logged'
 
 printf 'Lockdown transaction tests passed.\n'

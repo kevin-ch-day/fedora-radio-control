@@ -9,11 +9,27 @@ EXIT_PRIVILEGES=4
 EXIT_HARDWARE=5
 EXIT_BUSY=6
 
-ACTION_LOG_DIRECTORY=''
-ACTION_LOG_FILE=''
-
 error() {
   printf 'Error: %s\n' "$*" >&2
+}
+
+COMMON_LIB_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+# shellcheck source=logging.sh
+source "${COMMON_LIB_DIR}/logging.sh"
+
+format_elapsed_seconds() {
+  local seconds="$1" days hours minutes
+  [[ "${seconds}" =~ ^[0-9]+$ ]] || { printf 'unknown'; return; }
+  days=$(( seconds / 86400 ))
+  hours=$(( (seconds % 86400) / 3600 ))
+  minutes=$(( (seconds % 3600) / 60 ))
+  if (( days > 0 )); then
+    printf '%sd %02dh %02dm' "${days}" "${hours}" "${minutes}"
+  elif (( hours > 0 )); then
+    printf '%sh %02dm' "${hours}" "${minutes}"
+  else
+    printf '%sm' "${minutes}"
+  fi
 }
 
 require_fedora() {
@@ -46,33 +62,6 @@ require_root() {
     error "This action requires root. Use the installed privileged helper for: ${action}"
     return "${EXIT_PRIVILEGES}"
   fi
-}
-
-prepare_action_log_directory() {
-  if (( EUID == 0 )); then
-    ACTION_LOG_DIRECTORY='/var/log/fedora-radio-control'
-    install -d -o root -g root -m 0700 "${ACTION_LOG_DIRECTORY}" || {
-      error "Unable to create secure log directory: ${ACTION_LOG_DIRECTORY}"
-      return "${EXIT_UNKNOWN}"
-    }
-  else
-    # Mocked tests never run mutations as root. Keep their artifacts isolated
-    # from the production log directory.
-    ACTION_LOG_DIRECTORY="${APPLICATION_ROOT}/logs"
-    mkdir -p "${ACTION_LOG_DIRECTORY}" || return "${EXIT_UNKNOWN}"
-  fi
-}
-
-begin_action_log() {
-  local action="$1" timestamp
-  prepare_action_log_directory || return $?
-  timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
-  umask 077
-  ACTION_LOG_FILE="$(mktemp "${ACTION_LOG_DIRECTORY}/${timestamp}_${action}.XXXXXX.log")" || {
-    error "Unable to create action log in ${ACTION_LOG_DIRECTORY}"
-    return "${EXIT_UNKNOWN}"
-  }
-  ln -sfn "$(basename "${ACTION_LOG_FILE}")" "${ACTION_LOG_DIRECTORY}/latest.log"
 }
 
 with_mutation_lock() {

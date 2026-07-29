@@ -14,13 +14,15 @@ fail() {
   exit 1
 }
 
-for file in run.sh install.sh VERSION privileged/helper.sh wifi/state.sh wifi/control.sh bluetooth/state.sh bluetooth/control.sh lib/application.sh lib/menu-controller.sh lib/common.sh lib/display.sh lib/prompts.sh lib/menu.sh lib/radio-state.sh lib/readiness.sh lib/lockdown.sh tests/test-static.sh tests/test-policy.sh tests/test-lockdown.sh tests/test-bluetooth-control.sh tests/test-wifi-control.sh README.md LICENSE logs/.gitkeep .gitignore; do
+for file in run.sh install.sh VERSION pyproject.toml docs/architecture.md privileged/bash/helper.sh privileged/bash/wifi/state.sh privileged/bash/wifi/control.sh privileged/bash/bluetooth/state.sh privileged/bash/bluetooth/control.sh privileged/bash/vpn/state.sh src/fedora_radio_control/__init__.py src/fedora_radio_control/__main__.py src/fedora_radio_control/cli.py src/fedora_radio_control/menus.py src/fedora_radio_control/readiness.py src/fedora_radio_control/reports.py src/fedora_radio_control/state.py src/fedora_radio_control/system.py src/fedora_radio_control/ui.py privileged/bash/lib/common.sh privileged/bash/lib/logging.sh privileged/bash/lib/rfkill.sh privileged/bash/lib/radio-policy.sh privileged/bash/lib/status-report.sh privileged/bash/lib/radio-state.sh privileged/bash/lib/lockdown.sh tests/test-static.sh tests/test-python.sh tests/python/test_state.py tests/python/test_collectors.py tests/test-logging.sh tests/test-policy.sh tests/test-lockdown.sh tests/test-bluetooth-control.sh tests/test-wifi-control.sh tests/test-wifi-state.sh tests/test-vpn-state.sh README.md LICENSE logs/.gitkeep .gitignore; do
   [[ -e "${file}" ]] || fail "Missing required file: ${file}"
 done
 
-[[ -x run.sh && -x install.sh && -x privileged/helper.sh ]] || fail 'public and privileged scripts must be executable'
+[[ -x run.sh && -x install.sh && -x privileged/bash/helper.sh && -x tests/test-python.sh ]] || fail 'public and privileged scripts must be executable'
+grep -Fq 'package-dir = { "" = "src" }' pyproject.toml || fail 'Python package must use the src layout'
+grep -Fq 'requires-python = ">=3.10"' pyproject.toml || fail 'Python version support must be declared'
 
-for file in run.sh install.sh privileged/helper.sh wifi/state.sh wifi/control.sh bluetooth/state.sh bluetooth/control.sh lib/application.sh lib/menu-controller.sh lib/common.sh lib/display.sh lib/prompts.sh lib/menu.sh lib/radio-state.sh lib/readiness.sh lib/lockdown.sh tests/test-static.sh tests/test-policy.sh tests/test-lockdown.sh tests/test-bluetooth-control.sh tests/test-wifi-control.sh; do
+for file in run.sh install.sh privileged/bash/helper.sh privileged/bash/wifi/state.sh privileged/bash/wifi/control.sh privileged/bash/bluetooth/state.sh privileged/bash/bluetooth/control.sh privileged/bash/vpn/state.sh privileged/bash/lib/common.sh privileged/bash/lib/logging.sh privileged/bash/lib/rfkill.sh privileged/bash/lib/radio-policy.sh privileged/bash/lib/status-report.sh privileged/bash/lib/radio-state.sh privileged/bash/lib/lockdown.sh tests/test-static.sh tests/test-logging.sh tests/test-policy.sh tests/test-lockdown.sh tests/test-bluetooth-control.sh tests/test-wifi-control.sh tests/test-wifi-state.sh tests/test-vpn-state.sh; do
   bash -n "${file}"
 done
 
@@ -39,6 +41,8 @@ invalid_status=$?
 status_status=$?
 ./run.sh readiness >/dev/null 2>&1
 readiness_status=$?
+./run.sh activity >/dev/null 2>&1
+activity_status=$?
 ./run.sh wifi profiles >/dev/null 2>&1
 wifi_profiles_status=$?
 ./run.sh bluetooth enable >/dev/null 2>&1
@@ -68,6 +72,10 @@ case "${readiness_status}" in
   0|1|3) ;;
   *) fail "readiness returned ${readiness_status}, expected 0, 1, or 3" ;;
 esac
+case "${activity_status}" in
+  0|3) ;;
+  *) fail "activity returned ${activity_status}, expected 0 or 3" ;;
+esac
 [[ "${bluetooth_enable_status}" -eq 2 ]] || fail "Unimplemented Bluetooth enable returned ${bluetooth_enable_status}, expected 2"
 case "${wifi_profiles_status}" in
   0|3) ;;
@@ -81,41 +89,51 @@ esac
 [[ "${invalid_menu_status}" -eq 0 ]] || fail "Invalid-input menu returned ${invalid_menu_status}, expected 0"
 [[ "${closed_input_menu_status}" -eq 0 ]] || fail "Closed-input menu returned ${closed_input_menu_status}, expected 0"
 
+./tests/test-logging.sh
+./tests/test-python.sh
 ./tests/test-policy.sh
 ./tests/test-lockdown.sh
 ./tests/test-bluetooth-control.sh
 ./tests/test-wifi-control.sh
+./tests/test-wifi-state.sh
+./tests/test-vpn-state.sh
 
 for prohibited in 'nmcli device wifi rescan' 'systemctl start' 'systemctl enable' 'systemctl disable' 'systemctl unmask' 'nmcli connection modify'; do
-  if grep -Fq "${prohibited}" run.sh wifi/*.sh bluetooth/*.sh lib/*.sh; then
+  if grep -Fq "${prohibited}" run.sh privileged/bash/wifi/*.sh privileged/bash/bluetooth/*.sh privileged/bash/vpn/*.sh privileged/bash/lib/*.sh; then
     fail "Runtime code contains prohibited mutation command: ${prohibited}"
   fi
 done
 
+for prohibited in 'nmcli device wifi rescan' 'systemctl start' 'systemctl enable' 'systemctl disable' 'systemctl unmask' 'nmcli connection modify' 'nmcli radio wifi on' 'nmcli radio wifi off' 'rfkill block' 'rfkill unblock' 'systemctl stop' 'systemctl mask' 'bluetoothctl power'; do
+  if grep -R --include='*.py' -Fq "${prohibited}" src/fedora_radio_control; then
+    fail "Python frontend contains a direct radio mutation command: ${prohibited}"
+  fi
+done
+if grep -R --include='*.py' -Eq 'shell[[:space:]]*=[[:space:]]*True|os\.system|Popen\(' src/fedora_radio_control; then
+  fail 'Python frontend must not use shell execution'
+fi
+
 for prohibited in 'nmcli radio wifi on' 'nmcli radio wifi off' 'rfkill block' 'rfkill unblock' 'systemctl stop' 'systemctl mask' 'bluetoothctl power'; do
-  if grep -Fl "${prohibited}" run.sh wifi/*.sh bluetooth/*.sh lib/*.sh | grep -Fxv 'lib/lockdown.sh' | grep -Fxv 'wifi/control.sh' | grep -Fxv 'bluetooth/control.sh' >/dev/null; then
+  if grep -Fl "${prohibited}" run.sh privileged/bash/wifi/*.sh privileged/bash/bluetooth/*.sh privileged/bash/vpn/*.sh privileged/bash/lib/*.sh | grep -Fxv 'privileged/bash/lib/lockdown.sh' | grep -Fxv 'privileged/bash/wifi/control.sh' | grep -Fxv 'privileged/bash/bluetooth/control.sh' >/dev/null; then
     fail "Mutation command appears outside an approved control module: ${prohibited}"
   fi
 done
 
-grep -Fq 'source "${APPLICATION}"' run.sh || fail 'run.sh must load the internal application library'
-grep -Fq 'app_main "$@"' run.sh || fail 'run.sh must pass unchanged arguments to the application'
-grep -Fq 'APPLICATION="${SCRIPT_DIR}/lib/application.sh"' run.sh || fail 'run.sh must resolve the application library absolutely'
+grep -Fq 'python3 -m fedora_radio_control "$@"' run.sh || fail 'run.sh must pass unchanged arguments to the Python application'
+grep -Fq 'APPLICATION="${SCRIPT_DIR}/src/fedora_radio_control/__main__.py"' run.sh || fail 'run.sh must resolve the Python application absolutely'
+grep -Fq 'PYTHONPATH=${SCRIPT_DIR}/src' run.sh || fail 'run.sh must load Python from the source package root'
 if grep -Eq 'EUID|show_main_menu|refresh_radio_state|rfkill|nmcli|bluetoothctl' run.sh; then
   fail 'run.sh must not contain privilege, menu, or radio-state implementation logic'
 fi
-if grep -Fq 'wifi/control.sh' lib/application.sh || grep -Fq 'bluetooth/control.sh' lib/application.sh || grep -Fq 'lockdown.sh' lib/application.sh; then
-  fail 'The checkout frontend must not source local mutation modules'
-fi
-grep -Fq "readonly PRIVILEGED_HELPER='/usr/local/libexec/fedora-radio-control/radio-control-privileged'" lib/application.sh || fail 'Frontend must use the fixed privileged helper path'
-grep -Fq 'source "${RUNTIME_DIR}/wifi-control.sh"' privileged/helper.sh || fail 'Helper must source installed Wi-Fi mutation module'
-grep -Fq 'PATH=/usr/sbin:/usr/bin:/sbin:/bin' privileged/helper.sh || fail 'Helper must set a controlled PATH'
-if grep -Eq '\beval\b|bash[[:space:]]+-c|sh[[:space:]]+-c' install.sh privileged/helper.sh lib/application.sh; then
+grep -Fq 'source "${RUNTIME_DIR}/wifi-control.sh"' privileged/bash/helper.sh || fail 'Helper must source installed Wi-Fi mutation module'
+grep -Fq 'recent-activity)' privileged/bash/helper.sh || fail 'Helper must provide protected recent activity output'
+grep -Fq 'PATH=/usr/sbin:/usr/bin:/sbin:/bin' privileged/bash/helper.sh || fail 'Helper must set a controlled PATH'
+if grep -Eq '\beval\b|bash[[:space:]]+-c|sh[[:space:]]+-c' install.sh privileged/bash/helper.sh; then
   fail 'Privileged boundary contains dynamic command execution'
 fi
 
 if command -v shellcheck >/dev/null 2>&1; then
-  shellcheck run.sh wifi/state.sh wifi/control.sh bluetooth/state.sh bluetooth/control.sh lib/application.sh lib/menu-controller.sh lib/common.sh lib/display.sh lib/prompts.sh lib/menu.sh lib/radio-state.sh lib/readiness.sh lib/lockdown.sh tests/test-static.sh tests/test-policy.sh tests/test-lockdown.sh tests/test-bluetooth-control.sh tests/test-wifi-control.sh
+  shellcheck run.sh privileged/bash/wifi/state.sh privileged/bash/wifi/control.sh privileged/bash/bluetooth/state.sh privileged/bash/bluetooth/control.sh privileged/bash/vpn/state.sh privileged/bash/lib/common.sh privileged/bash/lib/logging.sh privileged/bash/lib/rfkill.sh privileged/bash/lib/radio-policy.sh privileged/bash/lib/status-report.sh privileged/bash/lib/radio-state.sh privileged/bash/lib/lockdown.sh tests/test-static.sh tests/test-logging.sh tests/test-policy.sh tests/test-lockdown.sh tests/test-bluetooth-control.sh tests/test-wifi-control.sh tests/test-wifi-state.sh tests/test-vpn-state.sh
 else
   printf 'SKIP: ShellCheck is not installed.\n'
 fi

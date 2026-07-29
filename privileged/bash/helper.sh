@@ -8,7 +8,7 @@ umask 077
 readonly PATH
 
 readonly RUNTIME_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
-readonly PROTOCOL_VERSION='2'
+readonly PROTOCOL_VERSION='3'
 
 helper_error() {
   printf 'Error: %s\n' "$*" >&2
@@ -28,7 +28,7 @@ verify_runtime() {
   owner="$(stat -c '%u' "${RUNTIME_DIR}")"
   mode="$(stat -c '%a' "${RUNTIME_DIR}")"
   [[ "${owner}" == 0 ]] && (( ((8#${mode}) & 8#022) == 0 )) || return 1
-  for required in common.sh wifi-state.sh bluetooth-state.sh radio-state.sh wifi-control.sh bluetooth-control.sh lockdown.sh VERSION; do
+  for required in common.sh logging.sh wifi-state.sh bluetooth-state.sh rfkill.sh radio-policy.sh status-report.sh radio-state.sh wifi-control.sh bluetooth-control.sh lockdown.sh VERSION; do
     path="${RUNTIME_DIR}/${required}"
     runtime_file_safe "${path}" || return 1
   done
@@ -83,6 +83,10 @@ case "$1" in
   bluetooth-disable)
     require_commands rfkill systemctl flock
     with_mutation_lock bluetooth_disable_apply
+    ;;
+  recent-activity)
+    ACTION_LOG_DIRECTORY='/var/log/fedora-radio-control'
+    action_log_show_recent_activity
     ;;
   *) helper_error 'Unsupported privileged operation.'; exit 2 ;;
 esac

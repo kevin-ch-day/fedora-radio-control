@@ -109,6 +109,15 @@ report_bluetooth_state() {
   case "${BLUETOOTH_EFFECTIVE}" in
     disabled) ui_label 'Effective state:' 'DISABLED' ;;
     unknown) ui_label 'Effective state:' 'STATE UNKNOWN' ;;
-    *) ui_label 'Effective state:' 'NOT FULLY DISABLED' ;;
+    *)
+      ui_label 'Effective state:' 'NOT FULLY DISABLED'
+      if [[ "${BLUETOOTH_SERVICE_ACTIVE}" != 'inactive' ]]; then
+        ui_label 'Policy blocker:' "bluetooth.service is ${BLUETOOTH_SERVICE_ACTIVE}"
+      elif (( BLUETOOTH_RFKILL_COUNT == 0 )); then
+        ui_label 'Policy blocker:' 'Bluetooth RFKill hardware was not detected'
+      else
+        ui_label 'Policy blocker:' 'a Bluetooth RFKill device remains unblocked'
+      fi
+      ;;
   esac
 }

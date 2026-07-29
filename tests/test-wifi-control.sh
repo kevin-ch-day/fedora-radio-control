@@ -6,12 +6,12 @@ REPO_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 TEST_DIR="$(mktemp -d)"
 trap 'rm -rf "${TEST_DIR}"' EXIT
 
-source "${REPO_DIR}/lib/common.sh"
-source "${REPO_DIR}/wifi/state.sh"
-source "${REPO_DIR}/bluetooth/state.sh"
-source "${REPO_DIR}/lib/radio-state.sh"
+source "${REPO_DIR}/privileged/bash/lib/common.sh"
+source "${REPO_DIR}/privileged/bash/wifi/state.sh"
+source "${REPO_DIR}/privileged/bash/bluetooth/state.sh"
+source "${REPO_DIR}/privileged/bash/lib/radio-state.sh"
 APPLICATION_ROOT="${TEST_DIR}"
-source "${REPO_DIR}/wifi/control.sh"
+source "${REPO_DIR}/privileged/bash/wifi/control.sh"
 
 MOCK_WIFI='enabled'
 MOCK_WIFI_BLOCK='unblocked'
@@ -48,5 +48,8 @@ wifi_disable_apply >/dev/null 2>/dev/null || fail 'Wi-Fi disable should verify d
 [[ "${MOCK_WIFI_BLOCK}" == 'blocked' ]] || fail 'WLAN was not RFKill-blocked'
 [[ -L "${ACTION_LOG_DIRECTORY}/latest.log" ]] || fail 'latest log link was not created'
 grep -Fq 'final_result=DISABLED' "${WIFI_CONTROL_LOG_FILE}" || fail 'verified result was not logged'
+grep -Fq 'log_schema_version=1' "${WIFI_CONTROL_LOG_FILE}" || fail 'log schema version was not recorded'
+grep -Fq 'event=command_result' "${WIFI_CONTROL_LOG_FILE}" || fail 'command outcome event was not logged'
+grep -Fq 'exit_code=0' "${WIFI_CONTROL_LOG_FILE}" || fail 'verified action exit code was not logged'
 
 printf 'Wi-Fi control tests passed.\n'

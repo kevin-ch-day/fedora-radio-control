@@ -3,6 +3,13 @@
 `fedora-radio-control` is a small, auditable command-line utility for
 reporting Wi-Fi and Bluetooth lockdown state on Fedora Linux laptops.
 
+The public application is now a dependency-free Python frontend. `run.sh`
+remains the only supported entry point and starts that frontend; the reviewed
+Bash runtime remains temporarily inside the installed, root-owned helper for
+the narrow set of verified radio mutations. This staged migration keeps the
+privilege boundary stable while read-only state collection, reports, menus,
+and command dispatch move to typed Python modules.
+
 ## Current milestone
 
 The application reports NetworkManager Wi-Fi state, WLAN and Bluetooth RFKill
@@ -11,15 +18,16 @@ can apply verified full radio lockdown plus focused Wi-Fi and Bluetooth
 disable actions; it does not change saved NetworkManager profiles, paired
 devices, firewall rules, or systemd boot settings.
 
-The `lib/` directory also contains small UI helpers for consistent terminal
-display, optional color, safe confirmations, and numbered menus. `status`
-does not invoke menus or prompts. Future state-changing commands may use them
-to obtain an explicit terminal confirmation; they never collect credentials.
+The Python package contains the terminal display, optional color, safe
+confirmations, and numbered menus. `status` does not invoke menus or prompts.
+The remaining Bash files are isolated to the privileged helper runtime and do
+not collect credentials.
 
 ## Requirements
 
 - Fedora Linux
-- Bash
+- Python 3.10 or newer (standard library only)
+- Bash (only for the installed privileged mutation helper)
 - `nmcli`, `rfkill`, and `systemctl`
 - `bluetoothctl` is optional. When present, the tool reports controller
   exposure and powers down an available controller during Bluetooth disable.
@@ -42,6 +50,9 @@ to obtain an explicit terminal confirmation; they never collect credentials.
 
 # Bluetooth disable (enable is intentionally not yet implemented)
 ./run.sh bluetooth disable
+
+# Read a concise, root-protected action history
+./run.sh activity
 ```
 
 Read-only commands work directly from the checkout. Run the interactive menu
@@ -66,32 +77,54 @@ non-writable but world-traversable/executable, so the normal-user dashboard
 can verify their integrity. Supporting mutation modules remain readable only
 by root.
 
-Action logs are root-protected under `/var/log/fedora-radio-control/`. To
-review the current sanitized log without running the menu as root, use:
+Action logs are root-protected under `/var/log/fedora-radio-control/`. Each
+log uses a stable `key=value` schema with action metadata, timestamped state
+snapshots, command outcomes, and a final verified result. Values are sanitized
+before writing; the application does not log SSIDs, profile names, addresses,
+VPN endpoints, peers, or command output. To review a concise action history:
 
 ```bash
-sudo tail -n 40 /var/log/fedora-radio-control/latest.log
+./run.sh activity
 ```
 
+For full detail, use `sudo tail -n 80 /var/log/fedora-radio-control/latest.log`.
+
 `run.sh` is the sole supported public entry point. It resolves the repository
-path and loads the internal application modules. Running `./run.sh` with no
-arguments opens the menu. The
-menu refreshes live state before each action. Bluetooth enable remains shown
-as not implemented; it does not run placeholder commands or change system
-state.
+path and starts the Python package from `src/`. Running `./run.sh` with no
+arguments opens the menu, which refreshes live state before each action.
+Bluetooth enable remains shown as not implemented; it does not run placeholder
+commands or change system state.
 
 ## Internal layout
 
-Radio-specific state collection is kept separate from shared policy logic:
+The Python frontend is split by responsibility:
 
 ```text
-wifi/state.sh           # NetworkManager Wi-Fi state
-bluetooth/state.sh      # Bluetooth service and controller state
-lib/radio-state.sh      # Shared RFKill parsing and lockdown policy
-lib/readiness.sh        # Cross-radio DEF CON readiness checks
+pyproject.toml                  # standard Python packaging metadata
+src/fedora_radio_control/system.py    # fixed-vector process execution and helper validation
+src/fedora_radio_control/state.py     # RFKill JSON, radio, Wi-Fi, and VPN state
+src/fedora_radio_control/readiness.py # conference posture checks
+src/fedora_radio_control/reports.py   # detailed radio and profile reports
+src/fedora_radio_control/ui.py        # terminal rendering and prompts
+src/fedora_radio_control/menus.py     # interactive menu controller
+src/fedora_radio_control/cli.py       # thin public command dispatcher
+```
+
+The following Bash tree is retained only for the installed privileged runtime
+while its mutation paths are migrated separately:
+
+```text
+privileged/bash/helper.sh       # installed root-owned helper entry point
+privileged/bash/wifi/           # verified Wi-Fi mutation and state helpers
+privileged/bash/bluetooth/      # verified Bluetooth mutation and state helpers
+privileged/bash/vpn/            # helper-only VPN state support
+privileged/bash/lib/            # helper policy, locking, and log support
 ```
 
 These are internal modules; use `./run.sh` for normal operation.
+
+See [the architecture guide](docs/architecture.md) for the Python/privileged
+runtime boundary and the repository layout.
 
 Menu option `7` clears the interactive terminal and redraws the current menu.
 Normal menu refreshes do not clear the screen, so terminal scrollback and
@@ -142,6 +175,13 @@ The trusted Wi-Fi-enable helper rechecks this count and refuses enablement if
 it cannot inspect it; when profiles are enabled for autoconnect, it warns with
 the count before requiring the `ENABLE-WIFI` confirmation.
 
+The dashboard and readiness view report whether NetworkManager sees active VPN
+connections and their approximate duration. They intentionally show neither
+VPN profile names, endpoints, peers, nor addresses. Wi-Fi link duration is
+similarly shown only while a Wi-Fi connection is active and never includes its
+SSID. These are passive observations; the application does not create, stop,
+or reconfigure VPN connections.
+
 ## Conference posture
 
 Treat conference connectivity as a hostile environment. Before travel, apply
@@ -178,7 +218,7 @@ Run the non-destructive static checks with:
 ./tests/test-static.sh
 ```
 
-The test checks Bash syntax, required files, executable permissions, help and
+The test checks Bash and Python syntax, required files, executable permissions, help and
 invalid-command behavior, and ensures the entry point has no radio mutation
 commands. It also runs hardware-independent policy fixtures for RFKill,
 Bluetooth service, missing-adapter, and query-failure behavior. If installed,
@@ -207,8 +247,8 @@ Wi-Fi radio preference across a NetworkManager restart or reboot; use the
 explicit Wi-Fi enable action when reopening that radio is intended.
 
 Mutations are serialized with a root-owned runtime lock, so two radio-control
-actions cannot interleave. Start the menu with `sudo` to review protected
-action logs from option `6`.
+actions cannot interleave. Option `6` and `./run.sh activity` request sudo
+only to produce a concise, root-protected activity summary.
 
 For DEF CON deployment, install a reviewed release before using privileged
 actions. A normal-user-owned Git checkout is suitable for development and

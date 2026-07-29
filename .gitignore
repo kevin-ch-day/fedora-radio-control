@@ -8,3 +8,7 @@ logs/*
 *.swp
 .idea/
 .vscode/
+
+# Python bytecode and test caches
+__pycache__/
+*.py[cod]

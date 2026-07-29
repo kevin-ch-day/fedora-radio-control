@@ -5,13 +5,13 @@ set -Eeuo pipefail
 REPO_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 
 # shellcheck source=../lib/common.sh
-source "${REPO_DIR}/lib/common.sh"
+source "${REPO_DIR}/privileged/bash/lib/common.sh"
 # shellcheck source=../wifi/state.sh
-source "${REPO_DIR}/wifi/state.sh"
+source "${REPO_DIR}/privileged/bash/wifi/state.sh"
 # shellcheck source=../bluetooth/state.sh
-source "${REPO_DIR}/bluetooth/state.sh"
+source "${REPO_DIR}/privileged/bash/bluetooth/state.sh"
 # shellcheck source=../lib/radio-state.sh
-source "${REPO_DIR}/lib/radio-state.sh"
+source "${REPO_DIR}/privileged/bash/lib/radio-state.sh"
 
 MOCK_RFKILL_JSON=''
 MOCK_RFKILL_FAIL=0

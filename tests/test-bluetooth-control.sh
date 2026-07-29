@@ -7,16 +7,16 @@ TEST_DIR="$(mktemp -d)"
 trap 'rm -rf "${TEST_DIR}"' EXIT
 
 # shellcheck source=../lib/common.sh
-source "${REPO_DIR}/lib/common.sh"
+source "${REPO_DIR}/privileged/bash/lib/common.sh"
 # shellcheck source=../wifi/state.sh
-source "${REPO_DIR}/wifi/state.sh"
+source "${REPO_DIR}/privileged/bash/wifi/state.sh"
 # shellcheck source=../bluetooth/state.sh
-source "${REPO_DIR}/bluetooth/state.sh"
+source "${REPO_DIR}/privileged/bash/bluetooth/state.sh"
 # shellcheck source=../lib/radio-state.sh
-source "${REPO_DIR}/lib/radio-state.sh"
+source "${REPO_DIR}/privileged/bash/lib/radio-state.sh"
 APPLICATION_ROOT="${TEST_DIR}"
 # shellcheck source=../bluetooth/control.sh
-source "${REPO_DIR}/bluetooth/control.sh"
+source "${REPO_DIR}/privileged/bash/bluetooth/control.sh"
 
 MOCK_BLUETOOTH_BLOCK='unblocked'
 MOCK_BLUETOOTH_SERVICE='active'
@@ -69,7 +69,9 @@ bluetooth_disable_apply >/dev/null || fail 'mocked Bluetooth disable should veri
 [[ "${#MOCK_COMMANDS[@]}" -eq 3 ]] || fail 'unexpected number of mutation attempts'
 [[ -L "${APPLICATION_ROOT}/logs/latest.log" ]] || fail 'latest log link was not created'
 grep -Fq 'final_result=DISABLED' "${BLUETOOTH_CONTROL_LOG_FILE}" || fail 'verified result was not logged'
-grep -Fq 'attempt=power_off_bluetooth_controller:skipped_no_controller' "${BLUETOOTH_CONTROL_LOG_FILE}" || fail 'unavailable controller was not safely skipped'
+grep -Fq 'event=command_skipped' "${BLUETOOTH_CONTROL_LOG_FILE}" || fail 'unavailable controller skip was not logged'
+grep -Fq 'reason=no_controller' "${BLUETOOTH_CONTROL_LOG_FILE}" || fail 'unavailable controller was not safely skipped'
 grep -Fq 'attempt=runtime_mask_bluetooth_service' "${BLUETOOTH_CONTROL_LOG_FILE}" || fail 'runtime service mask was not logged'
+grep -Fq 'event=action_completed' "${BLUETOOTH_CONTROL_LOG_FILE}" || fail 'action completion was not logged'
 
 printf 'Bluetooth control tests passed.\n'
