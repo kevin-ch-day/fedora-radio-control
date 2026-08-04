@@ -39,7 +39,7 @@ class UI:
             return self._style(text, self._SAFE)
         if normalized in {"NONE", "NOT DETECTED", "NOT APPLICABLE", "INSTALLED AND VERIFIED"}:
             return self._style(text, self._SAFE)
-        if normalized.startswith(("FAIL", "NOT LOCKED", "NOT FULLY", "NOT ACCESSIBLE", "UNBLOCKED", "MISSING", "INVALID", "ACTIVE", "ENABLED")):
+        if normalized.startswith(("FAIL", "NOT LOCKED", "NOT FULLY", "NOT ACCESSIBLE", "VERSION MISMATCH", "VERSION UNREADABLE", "UNBLOCKED", "MISSING", "INVALID", "ACTIVE", "ENABLED")):
             return self._style(text, self._DANGER)
         if normalized.startswith(("STATE UNKNOWN", "UNKNOWN", "REVIEW", "HARDWARE BLOCKED")):
             return self._style(text, self._REVIEW)
@@ -109,9 +109,11 @@ class UI:
             print("\033[2J\033[H", end="")
 
     @staticmethod
-    def pause() -> None:
+    def pause() -> bool:
+        """Wait for a menu acknowledgement, returning false when input closes."""
         if sys.stdin.isatty() and sys.stdout.isatty():
             try:
                 input("\nPress Enter to return to the menu... ")
             except EOFError:
-                pass
+                return False
+        return True

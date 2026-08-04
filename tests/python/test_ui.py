@@ -34,6 +34,15 @@ class TerminalThemeTests(unittest.TestCase):
         self.assertIn("[1;32m", ui.result("LOCKED DOWN"))
         self.assertIn("[1;33m", ui.result("STATE UNKNOWN"))
         self.assertIn("[1;31m", ui.result("NOT LOCKED DOWN"))
+        self.assertIn("[1;31m", ui._tone("VERSION MISMATCH"))
+
+    def test_pause_reports_closed_input(self):
+        with (
+            patch.object(sys.stdin, "isatty", return_value=True),
+            patch.object(sys.stdout, "isatty", return_value=True),
+            patch("builtins.input", side_effect=EOFError),
+        ):
+            self.assertFalse(UI.pause())
 
     def test_plain_theme_preserves_a_clear_industrial_layout_without_ansi(self):
         ui = UI(color=False)

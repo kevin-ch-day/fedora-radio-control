@@ -53,6 +53,18 @@ class CommandDispatchTests(unittest.TestCase):
         self.assertIn("Do not run Fedora Radio Control as root", error.getvalue())
         parser.assert_not_called()
 
+    def test_ctrl_c_exits_cleanly_without_a_traceback(self):
+        with (
+            self._normal_user(),
+            patch.object(cli, "delegate", side_effect=KeyboardInterrupt) as delegate,
+            contextlib.redirect_stderr(io.StringIO()) as error,
+        ):
+            result = cli.main(["wifi", "disable"])
+
+        self.assertEqual(result, cli.EXIT_INTERRUPTED)
+        self.assertIn("Interrupted. Exiting Fedora Radio Control", error.getvalue())
+        delegate.assert_called_once_with(cli.REPOSITORY, PrivilegedOperation.WIFI_DISABLE)
+
     def test_missing_subcommand_is_a_usage_error(self):
         with self._normal_user(), contextlib.redirect_stderr(io.StringIO()):
             for arguments in (["wifi"], ["bluetooth", "enable"]):

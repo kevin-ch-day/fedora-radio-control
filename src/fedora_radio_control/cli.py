@@ -17,6 +17,7 @@ from .ui import UI
 
 REPOSITORY = Path(__file__).resolve().parents[2]
 Handler = Callable[[argparse.Namespace], int]
+EXIT_INTERRUPTED = 130
 
 
 def require_fedora(*commands: str) -> bool:
@@ -114,7 +115,11 @@ def main(arguments: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return EXIT_USAGE
-    parser = build_parser()
-    parsed = parser.parse_args(arguments)
-    handler: Handler = getattr(parsed, "handler", run_interactive)
-    return handler(parsed)
+    try:
+        parser = build_parser()
+        parsed = parser.parse_args(arguments)
+        handler: Handler = getattr(parsed, "handler", run_interactive)
+        return handler(parsed)
+    except KeyboardInterrupt:
+        print("\nInterrupted. Exiting Fedora Radio Control without further changes.", file=sys.stderr)
+        return EXIT_INTERRUPTED

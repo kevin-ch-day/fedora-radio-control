@@ -45,7 +45,7 @@ class MenuController:
         self.ui.label("Privileged component:", "INSTALLED AND VERIFIED" if status == "INSTALLED" else status)
         self.ui.label("VPN detected:", reports.vpn_text(connection))
         self.ui.rule()
-        for option in ("[1] Show detailed radio status", "[2] Apply full radio lockdown", "[3] Wi-Fi controls", "[4] Bluetooth controls", "[5] DEF CON readiness check", "[6] Show recent activity", "[7] Clear screen", "[0] Exit"):
+        for option in ("[1] Show detailed radio status", "[2] Apply full radio lockdown (confirmation required)", "[3] Wi-Fi controls", "[4] Bluetooth controls", "[5] DEF CON readiness check", "[6] Show recent activity", "[7] Clear screen", "[0] Exit"):
             self.ui.option(option)
         self.ui.rule()
         return self.ui.select(0, 7)
@@ -91,46 +91,80 @@ class MenuController:
             elif selection == 0:
                 return EXIT_OK
             elif selection == 1:
-                reports.status(self.ui); self.ui.pause()
+                reports.status(self.ui)
+                if not self.ui.pause():
+                    print("\nInput closed. Exiting menu without changes.")
+                    return EXIT_OK
             elif selection == 2:
-                delegate(self.repository, PrivilegedOperation.LOCKDOWN); self.ui.pause()
+                delegate(self.repository, PrivilegedOperation.LOCKDOWN)
+                if not self.ui.pause():
+                    print("\nInput closed. Exiting menu without changes.")
+                    return EXIT_OK
             elif selection == 3:
-                print("\n"); self._run_wifi()
+                print("\n")
+                if not self._run_wifi():
+                    print("Input closed. Exiting menu without changes.")
+                    return EXIT_OK
             elif selection == 4:
-                print("\n"); self._run_bluetooth()
+                print("\n")
+                if not self._run_bluetooth():
+                    print("Input closed. Exiting menu without changes.")
+                    return EXIT_OK
             elif selection == 5:
-                readiness.report(self.ui); self.ui.pause()
+                readiness.report(self.ui)
+                if not self.ui.pause():
+                    print("\nInput closed. Exiting menu without changes.")
+                    return EXIT_OK
             elif selection == 6:
-                delegate(self.repository, PrivilegedOperation.RECENT_ACTIVITY); self.ui.pause()
+                delegate(self.repository, PrivilegedOperation.RECENT_ACTIVITY)
+                if not self.ui.pause():
+                    print("\nInput closed. Exiting menu without changes.")
+                    return EXIT_OK
             elif selection == 7 and sys.stdout.isatty():
                 self.ui.clear()
 
-    def _run_wifi(self) -> None:
+    def _run_wifi(self) -> bool:
         while True:
             selected = self._wifi_menu()
-            if selected is None or selected == 0:
+            if selected is None:
+                return False
+            if selected == 0:
                 print("\n")
-                return
+                return True
             if selected == -1:
                 self.ui.alert("Invalid selection.")
             elif selected == 1:
-                reports.wifi_detail(self.ui); self.ui.pause()
+                reports.wifi_detail(self.ui)
+                if not self.ui.pause():
+                    return False
             elif selected == 2:
-                reports.profiles(self.ui); self.ui.pause()
+                reports.profiles(self.ui)
+                if not self.ui.pause():
+                    return False
             elif selected == 3:
-                delegate(self.repository, PrivilegedOperation.WIFI_DISABLE); self.ui.pause()
+                delegate(self.repository, PrivilegedOperation.WIFI_DISABLE)
+                if not self.ui.pause():
+                    return False
             elif selected == 4:
-                delegate(self.repository, PrivilegedOperation.WIFI_ENABLE); self.ui.pause()
+                delegate(self.repository, PrivilegedOperation.WIFI_ENABLE)
+                if not self.ui.pause():
+                    return False
 
-    def _run_bluetooth(self) -> None:
+    def _run_bluetooth(self) -> bool:
         while True:
             selected = self._bluetooth_menu()
-            if selected is None or selected == 0:
+            if selected is None:
+                return False
+            if selected == 0:
                 print("\n")
-                return
+                return True
             if selected == -1:
                 self.ui.alert("Invalid selection.")
             elif selected == 1:
-                reports.bluetooth_detail(self.ui); self.ui.pause()
+                reports.bluetooth_detail(self.ui)
+                if not self.ui.pause():
+                    return False
             elif selected == 2:
-                delegate(self.repository, PrivilegedOperation.BLUETOOTH_DISABLE); self.ui.pause()
+                delegate(self.repository, PrivilegedOperation.BLUETOOTH_DISABLE)
+                if not self.ui.pause():
+                    return False

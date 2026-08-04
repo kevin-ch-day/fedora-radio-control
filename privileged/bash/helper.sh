@@ -8,7 +8,7 @@ umask 077
 readonly PATH
 
 readonly RUNTIME_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
-readonly PROTOCOL_VERSION='3'
+readonly PROTOCOL_VERSION='5'
 
 helper_error() {
   printf 'Error: %s\n' "$*" >&2
@@ -66,9 +66,23 @@ helper_wifi_enable_confirmation() {
   [[ "${reply}" == 'ENABLE-WIFI' ]] || { error 'Wi-Fi enable cancelled.'; return "${EXIT_POLICY}"; }
 }
 
+helper_lockdown_confirmation() {
+  local reply
+  [[ -t 0 && -t 1 ]] || { error 'Lockdown requires an interactive terminal confirmation. Use lockdown --non-interactive only for reviewed automation.'; return "${EXIT_USAGE}"; }
+  printf '%s\n' 'WARNING: Lockdown disables Wi-Fi and Bluetooth, stops bluetooth.service, and may interrupt network access.' >&2
+  printf '%s' 'Type APPLY-LOCKDOWN to continue: ' >&2
+  IFS= read -r reply < /dev/tty || { error 'Lockdown cancelled.'; return "${EXIT_USAGE}"; }
+  [[ "${reply}" == 'APPLY-LOCKDOWN' ]] || { error 'Lockdown cancelled.'; return "${EXIT_POLICY}"; }
+}
+
 (( $# == 1 )) || { helper_error 'Unsupported privileged operation.'; exit 2; }
 case "$1" in
-  lockdown|lockdown-non-interactive)
+  lockdown)
+    require_commands nmcli rfkill systemctl flock
+    helper_lockdown_confirmation || exit $?
+    with_mutation_lock lockdown_apply
+    ;;
+  lockdown-non-interactive)
     require_commands nmcli rfkill systemctl flock
     with_mutation_lock lockdown_apply
     ;;

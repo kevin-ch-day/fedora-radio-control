@@ -14,13 +14,15 @@ fail() {
   exit 1
 }
 
-for file in run.sh install.sh VERSION pyproject.toml docs/architecture.md privileged/bash/helper.sh privileged/bash/wifi/state.sh privileged/bash/wifi/control.sh privileged/bash/bluetooth/state.sh privileged/bash/bluetooth/control.sh src/fedora_radio_control/__init__.py src/fedora_radio_control/__main__.py src/fedora_radio_control/cli.py src/fedora_radio_control/menus.py src/fedora_radio_control/readiness.py src/fedora_radio_control/reports.py src/fedora_radio_control/state.py src/fedora_radio_control/system.py src/fedora_radio_control/ui.py privileged/bash/lib/common.sh privileged/bash/lib/logging.sh privileged/bash/lib/rfkill.sh privileged/bash/lib/radio-policy.sh privileged/bash/lib/lockdown.sh tests/test-static.sh tests/test-python.sh tests/python/test_cli.py tests/python/test_state.py tests/python/test_collectors.py tests/python/test_reports.py tests/python/test_system.py tests/python/test_ui.py tests/test-logging.sh tests/test-policy.sh tests/test-lockdown.sh tests/test-bluetooth-control.sh tests/test-wifi-control.sh tests/test-wifi-state.sh README.md LICENSE logs/.gitkeep .gitignore; do
+for file in run.sh install.sh VERSION pyproject.toml docs/architecture.md privileged/bash/helper.sh privileged/bash/wifi/state.sh privileged/bash/wifi/control.sh privileged/bash/bluetooth/state.sh privileged/bash/bluetooth/control.sh src/fedora_radio_control/__init__.py src/fedora_radio_control/__main__.py src/fedora_radio_control/cli.py src/fedora_radio_control/menus.py src/fedora_radio_control/readiness.py src/fedora_radio_control/reports.py src/fedora_radio_control/state.py src/fedora_radio_control/system.py src/fedora_radio_control/ui.py privileged/bash/lib/common.sh privileged/bash/lib/logging.sh privileged/bash/lib/rfkill.sh privileged/bash/lib/radio-policy.sh privileged/bash/lib/lockdown.sh tests/test-static.sh tests/test-python.sh tests/python/test_cli.py tests/python/test_menus.py tests/python/test_state.py tests/python/test_collectors.py tests/python/test_reports.py tests/python/test_system.py tests/python/test_ui.py tests/test-logging.sh tests/test-policy.sh tests/test-lockdown.sh tests/test-bluetooth-control.sh tests/test-wifi-control.sh tests/test-wifi-state.sh README.md LICENSE logs/.gitkeep .gitignore; do
   [[ -e "${file}" ]] || fail "Missing required file: ${file}"
 done
 
 [[ -x run.sh && -x install.sh && -x privileged/bash/helper.sh && -x tests/test-python.sh ]] || fail 'public and privileged scripts must be executable'
 grep -Fq 'package-dir = { "" = "src" }' pyproject.toml || fail 'Python package must use the src layout'
 grep -Fq 'requires-python = ">=3.10"' pyproject.toml || fail 'Python version support must be declared'
+protocol_version="$(sed -nE "s/^readonly PROTOCOL_VERSION='([0-9]+)'$/\1/p" privileged/bash/helper.sh)"
+[[ -n "${protocol_version}" && "$(<VERSION)" == "${protocol_version}" ]] || fail 'Installed helper protocol must match VERSION'
 
 for file in run.sh install.sh privileged/bash/helper.sh privileged/bash/wifi/state.sh privileged/bash/wifi/control.sh privileged/bash/bluetooth/state.sh privileged/bash/bluetooth/control.sh privileged/bash/lib/common.sh privileged/bash/lib/logging.sh privileged/bash/lib/rfkill.sh privileged/bash/lib/radio-policy.sh privileged/bash/lib/lockdown.sh tests/test-static.sh tests/test-logging.sh tests/test-policy.sh tests/test-lockdown.sh tests/test-bluetooth-control.sh tests/test-wifi-control.sh tests/test-wifi-state.sh; do
   bash -n "${file}"
@@ -121,11 +123,16 @@ done
 grep -Fq 'python3 -m fedora_radio_control "$@"' run.sh || fail 'run.sh must pass unchanged arguments to the Python application'
 grep -Fq 'APPLICATION="${SCRIPT_DIR}/src/fedora_radio_control/__main__.py"' run.sh || fail 'run.sh must resolve the Python application absolutely'
 grep -Fq 'PYTHONPATH=${SCRIPT_DIR}/src' run.sh || fail 'run.sh must load Python from the source package root'
-if grep -Eq 'EUID|show_main_menu|refresh_radio_state|rfkill|nmcli|bluetoothctl' run.sh; then
-  fail 'run.sh must not contain privilege, menu, or radio-state implementation logic'
+grep -Fq '"$(id -u)" -eq 0' run.sh || fail 'run.sh must reject root before loading Python from the checkout'
+if grep -Eq 'show_main_menu|refresh_radio_state|rfkill|nmcli|bluetoothctl' run.sh; then
+  fail 'run.sh must not contain menu or radio-state implementation logic'
 fi
 grep -Fq 'source "${RUNTIME_DIR}/wifi-control.sh"' privileged/bash/helper.sh || fail 'Helper must source installed Wi-Fi mutation module'
 grep -Fq 'recent-activity)' privileged/bash/helper.sh || fail 'Helper must provide protected recent activity output'
+grep -Fq 'Next: start normally with ./run.sh' install.sh || fail 'Installer must document the normal-user launch path'
+grep -Fq 'selected radio actions prompt for sudo as needed' install.sh || fail 'Installer must explain action-specific elevation'
+grep -Fq "Type APPLY-LOCKDOWN to continue:" privileged/bash/helper.sh || fail 'Interactive lockdown must require a typed confirmation'
+grep -Fq 'lockdown-non-interactive)' privileged/bash/helper.sh || fail 'Helper must provide the reviewed non-interactive lockdown operation'
 grep -Fq 'PATH=/usr/sbin:/usr/bin:/sbin:/bin' privileged/bash/helper.sh || fail 'Helper must set a controlled PATH'
 if grep -Eq '\beval\b|bash[[:space:]]+-c|sh[[:space:]]+-c' install.sh privileged/bash/helper.sh; then
   fail 'Privileged boundary contains dynamic command execution'

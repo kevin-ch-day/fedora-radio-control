@@ -42,7 +42,10 @@ not collect credentials.
 ./run.sh --help
 
 # Verified state-changing actions (the helper requests sudo only when needed)
-./run.sh lockdown
+./run.sh lockdown  # requires typing APPLY-LOCKDOWN
+
+# Only for reviewed, non-interactive automation
+./run.sh lockdown --non-interactive
 
 # Wi-Fi controls (enable requires an interactive typed confirmation)
 ./run.sh wifi disable
@@ -80,9 +83,15 @@ by root.
 If the dashboard shows `NOT ACCESSIBLE` for the privileged component, its
 directory cannot be inspected by the normal user. Repair that installation
 with `sudo ./install.sh`; a healthy installed directory is root-owned mode
-`0755` while the supporting files remain root-readable only.
+`0755`, the public version metadata is mode `0644`, and the supporting
+mutation modules remain root-readable only.
 The same install step prunes superseded, root-owned helper display modules
 from prior releases; it never removes user files or action logs.
+
+`VERSION` is the installed-helper compatibility protocol, not the Python
+package version. It advances whenever the reviewed runtime or its installation
+contract changes, so a dashboard can require a reinstall instead of treating
+an older helper as current.
 
 Action logs are root-protected under `/var/log/fedora-radio-control/`. Each
 log uses a stable `key=value` schema with action metadata, timestamped state
@@ -101,6 +110,19 @@ path and starts the Python package from `src/`. Running `./run.sh` with no
 arguments opens the menu, which refreshes live state before each action.
 Bluetooth enable is intentionally not offered; the application exposes no
 placeholder commands or unverified state changes.
+`run.sh` refuses root before loading the Python package from the checkout.
+Use `./run.sh` as your normal user; approved actions elevate only through the
+installed root-owned helper.
+Press `Ctrl-C` at any prompt or during a read-only operation to exit cleanly
+with status `130`; the frontend makes no further changes after interruption.
+
+Run the application as `./run.sh`, never `sudo ./run.sh`. When an approved
+radio action needs privileges, the normal-user frontend invokes the fixed
+installed helper through `sudo` and prompts for your password as needed.
+`sudo ./install.sh` is only needed to install or update that helper.
+On success, the installer reports its staged/deployed file count, compatibility
+protocol, verified runtime and log protection, plus the normal-user launch
+command.
 
 ## Internal layout
 
@@ -240,7 +262,8 @@ ShellCheck is run as an additional check; otherwise it is reported as skipped.
 
 ## Limitations
 
-`./run.sh lockdown` performs a verified full radio lockdown through the
+`./run.sh lockdown` requires an interactive typed confirmation before it
+performs a verified full radio lockdown through the
 installed privileged helper. It disables NetworkManager Wi-Fi, RFKill-blocks
 WLAN and Bluetooth, powers off an available Bluetooth controller when
 possible, stops `bluetooth.service`, and returns nonzero unless final state
@@ -263,6 +286,11 @@ explicit Wi-Fi enable action when reopening that radio is intended.
 Mutations are serialized with a root-owned runtime lock, so two radio-control
 actions cannot interleave. Option `6` and `./run.sh activity` request sudo
 only to produce a concise, root-protected activity summary.
+`lockdown --non-interactive` is intentionally available only for reviewed
+automation; it bypasses the typed confirmation but retains the same privileged
+verification and logging transaction. It uses `sudo -n`, so automation must
+already have a non-prompting sudo authorization; this installer never creates
+one.
 
 For DEF CON deployment, install a reviewed release before using privileged
 actions. A normal-user-owned Git checkout is suitable for development and

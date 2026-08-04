@@ -26,10 +26,11 @@ readonly -a SOURCE_FILES=(
   'privileged/bash/wifi/control.sh:wifi-control.sh:0640'
   'privileged/bash/bluetooth/control.sh:bluetooth-control.sh:0640'
   'privileged/bash/lib/lockdown.sh:lockdown.sh:0640'
-  'VERSION:VERSION:0640'
+  'VERSION:VERSION:0644'
 )
 
 error() { printf 'Error: %s\n' "$*" >&2; }
+info() { printf '[ FRC ] %s\n' "$*"; }
 
 cleanup_install_stage() {
   [[ -n "${INSTALL_STAGE:-}" ]] || return 0
@@ -73,11 +74,12 @@ prepare_install_directory() {
 }
 
 safe_file() {
-  local path="$1" owner mode
+  local path="$1" expected_mode="${2:-}" owner mode
   [[ -f "${path}" && ! -L "${path}" ]] || return 1
   owner="$(stat -c '%u' "${path}")"
   mode="$(stat -c '%a' "${path}")"
-  [[ "${owner}" == 0 ]] && (( ((8#${mode}) & 8#022) == 0 ))
+  [[ "${owner}" == 0 ]] && (( ((8#${mode}) & 8#022) == 0 )) || return 1
+  [[ -z "${expected_mode}" || "${mode}" == "${expected_mode}" ]]
 }
 
 remove_obsolete_runtime_files() {
@@ -91,26 +93,45 @@ remove_obsolete_runtime_files() {
 }
 
 verify_installation() {
-  local record _source target _mode owner mode
+  local record _source target expected_mode owner mode
   [[ -d "${INSTALL_DIR}" && ! -L "${INSTALL_DIR}" ]] || { error "Missing installed directory: ${INSTALL_DIR}"; return 3; }
   owner="$(stat -c '%u' "${INSTALL_DIR}")"; mode="$(stat -c '%a' "${INSTALL_DIR}")"
   [[ "${owner}" == 0 && "${mode}" == 755 ]] || { error 'Installed directory must be root-owned with mode 0755 for normal-user verification.'; return 3; }
   for record in "${SOURCE_FILES[@]}"; do
-    IFS=: read -r _source target _mode <<< "${record}"
-    safe_file "${INSTALL_DIR}/${target}" || { error "Installed file is missing or unsafe: ${target}"; return 3; }
+    IFS=: read -r _source target expected_mode <<< "${record}"
+    safe_file "${INSTALL_DIR}/${target}" "${expected_mode#0}" || { error "Installed file is missing or has unexpected permissions: ${target}"; return 3; }
     bash -n "${INSTALL_DIR}/${target}" || { error "Installed script has invalid syntax: ${target}"; return 3; }
   done
   [[ -d "${LOG_DIR}" && ! -L "${LOG_DIR}" ]] || { error "Missing protected log directory: ${LOG_DIR}"; return 3; }
   owner="$(stat -c '%u' "${LOG_DIR}")"; mode="$(stat -c '%a' "${LOG_DIR}")"
   [[ "${owner}" == 0 && "${mode}" == 700 ]] || { error 'Protected log directory ownership or permissions are unsafe.'; return 3; }
   install -d -o root -g root -m 0700 "${RUNTIME_DIR}"
-  printf 'Privileged component verified: %s\n' "${INSTALL_DIR}"
+}
+
+show_verification_summary() {
+  printf '\n[ FRC ] // PRIVILEGED RUNTIME VERIFIED\n'
+  printf '%s\n' '---------------------------//-------------------------------'
+  printf '  Runtime files:           %s reviewed files verified\n' "${#SOURCE_FILES[@]}"
+  printf '  Helper:                  %s\n' "${INSTALL_DIR}/radio-control-privileged"
+  printf '  Compatibility protocol:  %s\n' "$(<"${SOURCE_DIR}/VERSION")"
+  printf '  Runtime directory:       root:root, mode 0755\n'
+  printf '  Protected logs:          %s (root-only, mode 0700)\n' "${LOG_DIR}"
+}
+
+show_install_summary() {
+  show_verification_summary
+  printf '%s\n' '---------------------------//-------------------------------'
+  printf '%s\n' '  Installation complete.'
+  printf '%s\n' '  Next: start normally with ./run.sh'
+  printf '%s\n' '  Do not use sudo ./run.sh; selected radio actions prompt for sudo as needed.'
 }
 
 install_runtime() {
   local stage record source target mode
+  info 'Validating reviewed runtime files...'
   INSTALL_STAGE="$(mktemp -d /root/.fedora-radio-control.XXXXXX)"
   install -d -o root -g root -m 0755 "${INSTALL_STAGE}/runtime"
+  info "Staging ${#SOURCE_FILES[@]} root-owned runtime files..."
   for record in "${SOURCE_FILES[@]}"; do
     IFS=: read -r source target mode <<< "${record}"
     install -o root -g root -m "${mode}" "${SOURCE_DIR}/${source}" "${INSTALL_STAGE}/runtime/${target}"
@@ -118,21 +139,22 @@ install_runtime() {
   verify_staged_syntax "${INSTALL_STAGE}/runtime"
   prepare_install_directory
   remove_obsolete_runtime_files
+  info 'Deploying the privileged helper and support modules...'
   for record in "${SOURCE_FILES[@]}"; do
     IFS=: read -r _source target _mode <<< "${record}"
     install -o root -g root -m "$(stat -c '%a' "${INSTALL_STAGE}/runtime/${target}")" "${INSTALL_STAGE}/runtime/${target}" "${INSTALL_DIR}/.${target}.new"
     mv -f "${INSTALL_DIR}/.${target}.new" "${INSTALL_DIR}/${target}"
   done
   install -d -o root -g root -m 0700 "${LOG_DIR}" "${RUNTIME_DIR}"
-  printf 'Installed privileged component: %s\n' "${INSTALL_DIR}/radio-control-privileged"
-  printf 'Protected logs: %s\n' "${LOG_DIR}"
+  info 'Verifying ownership, permissions, syntax, and log protection...'
   verify_installation
+  show_install_summary
   cleanup_install_stage
   INSTALL_STAGE=''
 }
 
 case "${1:-}" in
   '') require_fedora_root && verify_syntax && install_runtime ;;
-  --verify) require_fedora_root && verify_installation ;;
+  --verify) require_fedora_root && verify_installation && show_verification_summary ;;
   *) error 'Usage: sudo ./install.sh [--verify]'; exit 2 ;;
 esac
