@@ -8,6 +8,13 @@ from typing import Protocol
 
 from .state import autoconnect_count, collect
 from .system import EXIT_OK, EXIT_POLICY, EXIT_UNKNOWN, os_name
+from .vpn import (
+    nordvpn_connection,
+    nordvpn_posture,
+    nordvpn_readiness,
+    nordvpn_setting,
+    nordvpn_technology,
+)
 
 
 class ReportUI(Protocol):
@@ -70,6 +77,10 @@ def status(ui: ReportUI) -> int:
     ui.label("Service enabled:", state.bluetooth_enabled)
     controller = "ADAPTER UNAVAILABLE" if state.controller == "unavailable" else "NOT ASSESSED (bluetoothctl unavailable)" if state.controller == "tool-unavailable" else state.controller
     ui.label("Controller:", controller)
+    if state.controller == "available":
+        ui.label("Powered:", state.powered)
+        ui.label("Discoverable:", state.discoverable)
+        ui.label("Pairable:", state.pairable)
     ui.label("RFKill devices:", len(state.bluetooth))
     if state.bluetooth:
         render_rfkill(state.bluetooth)
@@ -94,6 +105,27 @@ def profiles(ui: ReportUI) -> int:
     return EXIT_OK
 
 
+def nordvpn_detail(ui: ReportUI) -> int:
+    """Render a privacy-safe, read-only NordVPN security posture report."""
+    posture = nordvpn_posture()
+    ui.heading("NordVPN Privacy Posture")
+    ui.label("Client:", nordvpn_connection(posture))
+    if not posture.available:
+        ui.note("NordVPN is optional; no client was detected. No connection details were queried.")
+        return EXIT_OK
+
+    ui.label("Technology:", nordvpn_technology(posture))
+    ui.label("Kill Switch:", nordvpn_setting(posture.kill_switch, "enabled"))
+    ui.label("Auto-connect:", nordvpn_setting(posture.auto_connect, "enabled"))
+    ui.label("Routing:", nordvpn_setting(posture.routing, "enabled"))
+    ui.label("LAN discovery:", nordvpn_setting(posture.lan_discovery, "disabled"))
+    ui.label("Meshnet:", nordvpn_setting(posture.meshnet, "disabled"))
+    result = nordvpn_readiness(posture)
+    ui.label("Posture:", ui.result(result))
+    ui.note("Read-only: endpoints, IPs, DNS, account data, transfer data, and allowlist entries are omitted.")
+    return EXIT_UNKNOWN if result.startswith("UNKNOWN") else EXIT_OK if result.startswith("PASS") else EXIT_POLICY
+
+
 def wifi_detail(ui: ReportUI) -> None:
     state = collect()
     ui.heading("Wi-Fi State")
@@ -115,6 +147,10 @@ def bluetooth_detail(ui: ReportUI) -> None:
     ui.label("Service enabled:", state.bluetooth_enabled)
     controller = "ADAPTER UNAVAILABLE" if state.controller == "unavailable" else "NOT ASSESSED (bluetoothctl unavailable)" if state.controller == "tool-unavailable" else state.controller
     ui.label("Controller:", controller)
+    if state.controller == "available":
+        ui.label("Powered:", state.powered)
+        ui.label("Discoverable:", state.discoverable)
+        ui.label("Pairable:", state.pairable)
     ui.label("RFKill devices:", len(state.bluetooth))
     if state.bluetooth:
         render_rfkill(state.bluetooth)

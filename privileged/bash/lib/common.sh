@@ -8,7 +8,19 @@ EXIT_UNKNOWN=3
 EXIT_BUSY=6
 
 error() {
-  printf 'Error: %s\n' "$*" >&2
+  if declare -F display_error >/dev/null 2>&1; then
+    display_error "$*"
+  else
+    printf 'Error: %s\n' "$*" >&2
+  fi
+}
+
+success() {
+  if declare -F display_success >/dev/null 2>&1; then
+    display_success "$*"
+  else
+    printf '%s\n' "$*"
+  fi
 }
 
 COMMON_LIB_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"

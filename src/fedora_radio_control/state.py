@@ -117,6 +117,12 @@ def collect() -> State:
     if shutil.which("bluetoothctl") is None:
         state.controller = "tool-unavailable"
         return state
+    # bluetoothctl can fail without output after bluetooth.service is stopped
+    # because its D-Bus endpoint is intentionally absent. The stopped service
+    # plus RFKill state remains sufficient disable evidence.
+    if state.bluetooth_active == "inactive":
+        state.controller = "unavailable"
+        return state
     controller = run(["bluetoothctl", "--timeout", "2", "show"], timeout=4)
     output = f"{controller.stdout}\n{controller.stderr}"
     if "No default controller available" in output:
@@ -164,6 +170,30 @@ def wifi_interface() -> tuple[str | None, bool]:
         if len(parts) == 3 and parts[1:] == ["wifi", "connected"]:
             return parts[0], True
     return None, True
+
+
+def wifi_mac_privacy(interface: str | None, interface_known: bool) -> str:
+    """Classify an active Wi-Fi MAC without retaining or displaying either address."""
+    if not interface_known:
+        return "unknown"
+    if interface is None:
+        return "not-applicable"
+    result = run([
+        "nmcli", "--terse", "--fields", "GENERAL.HWADDR,GENERAL.PERM-HWADDR",
+        "device", "show", interface,
+    ])
+    if result.returncode:
+        return "unknown"
+    values: dict[str, str] = {}
+    for line in result.stdout.splitlines():
+        key, separator, value = line.partition(":")
+        if separator and key in {"GENERAL.HWADDR", "GENERAL.PERM-HWADDR"}:
+            values[key] = value.strip().casefold()
+    current = values.get("GENERAL.HWADDR")
+    permanent = values.get("GENERAL.PERM-HWADDR")
+    if not current or not permanent:
+        return "unknown"
+    return "randomized" if current != permanent else "hardware"
 
 
 def autoconnect_count() -> int | None:

@@ -50,6 +50,12 @@ def show_profiles(_arguments: argparse.Namespace) -> int:
     return reports.profiles(UI())
 
 
+def show_vpn(_arguments: argparse.Namespace) -> int:
+    if not require_fedora():
+        return EXIT_UNKNOWN
+    return reports.nordvpn_detail(UI())
+
+
 def run_interactive(_arguments: argparse.Namespace) -> int:
     if not require_fedora("nmcli", "rfkill", "systemctl"):
         return EXIT_UNKNOWN
@@ -68,6 +74,7 @@ def build_parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command", title="commands")
     commands.add_parser("status", help="show detailed radio state").set_defaults(handler=show_status)
     commands.add_parser("readiness", help="show DEF CON readiness").set_defaults(handler=show_readiness)
+    commands.add_parser("vpn", help="show privacy-safe NordVPN posture").set_defaults(handler=show_vpn)
     commands.add_parser("activity", help="show protected recent activity").set_defaults(
         handler=delegate_operation(PrivilegedOperation.RECENT_ACTIVITY)
     )
@@ -100,6 +107,17 @@ def build_parser() -> argparse.ArgumentParser:
     bluetooth_commands = bluetooth.add_subparsers(dest="bluetooth_command", required=True)
     bluetooth_commands.add_parser("disable", help="disable and RFKill-block Bluetooth").set_defaults(
         handler=delegate_operation(PrivilegedOperation.BLUETOOTH_DISABLE)
+    )
+    bluetooth_commands.add_parser("enable", help="enable Bluetooth after confirmation").set_defaults(
+        handler=delegate_operation(PrivilegedOperation.BLUETOOTH_ENABLE)
+    )
+    bluetooth_power = bluetooth_commands.add_parser("power", help="control an available Bluetooth adapter")
+    bluetooth_power_commands = bluetooth_power.add_subparsers(dest="bluetooth_power_command", required=True)
+    bluetooth_power_commands.add_parser("off", help="power off the Bluetooth controller").set_defaults(
+        handler=delegate_operation(PrivilegedOperation.BLUETOOTH_POWER_OFF)
+    )
+    bluetooth_power_commands.add_parser("on", help="power on the Bluetooth controller after confirmation").set_defaults(
+        handler=delegate_operation(PrivilegedOperation.BLUETOOTH_POWER_ON)
     )
     return parser
 

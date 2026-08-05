@@ -84,7 +84,7 @@ lockdown_apply() {
   lockdown_log_state 'after'
   if [[ "$(current_policy_result)" == 'LOCKED DOWN' ]]; then
     action_log_result "${LOCKDOWN_LOG_FILE}" 'LOCKED_DOWN' "${EXIT_OK}"
-    printf 'Lockdown verified. Log: %s\n' "${LOCKDOWN_LOG_FILE}"
+    success "Lockdown verified. Log: ${LOCKDOWN_LOG_FILE}"
     return "${EXIT_OK}"
   fi
 

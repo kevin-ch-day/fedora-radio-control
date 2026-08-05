@@ -22,6 +22,8 @@ source "${REPO_DIR}/privileged/bash/bluetooth/control.sh"
 
 MOCK_BLUETOOTH_BLOCK='unblocked'
 MOCK_BLUETOOTH_SERVICE='active'
+MOCK_CONTROLLER='unavailable'
+MOCK_CONTROLLER_POWER='no'
 MOCK_COMMANDS=()
 
 nmcli() {
@@ -37,6 +39,10 @@ rfkill() {
       MOCK_BLUETOOTH_BLOCK='blocked'
       MOCK_COMMANDS+=('rfkill block bluetooth')
       ;;
+    'unblock bluetooth')
+      MOCK_BLUETOOTH_BLOCK='unblocked'
+      MOCK_COMMANDS+=('rfkill unblock bluetooth')
+      ;;
     *) return 1 ;;
   esac
 }
@@ -48,16 +54,40 @@ systemctl() {
     'mask --runtime bluetooth.service')
       MOCK_COMMANDS+=('systemctl mask --runtime bluetooth.service')
       ;;
+    'unmask --runtime bluetooth.service')
+      MOCK_COMMANDS+=('systemctl unmask --runtime bluetooth.service')
+      ;;
     'stop bluetooth.service')
       MOCK_BLUETOOTH_SERVICE='inactive'
       MOCK_COMMANDS+=('systemctl stop bluetooth.service')
+      ;;
+    'start bluetooth.service')
+      MOCK_BLUETOOTH_SERVICE='active'
+      MOCK_COMMANDS+=('systemctl start bluetooth.service')
       ;;
     *) return 1 ;;
   esac
 }
 
 bluetoothctl() {
-  printf '%s\n' 'No default controller available'
+  case "$*" in
+    '--timeout 2 show')
+      if [[ "${MOCK_CONTROLLER}" == 'unavailable' ]]; then
+        printf '%s\n' 'No default controller available'
+      else
+        printf 'Controller 00:11:22:33:44:55 Test Adapter\nPowered: %s\nDiscoverable: no\nPairable: no\n' "${MOCK_CONTROLLER_POWER}"
+      fi
+      ;;
+    '--timeout 5 power on')
+      MOCK_CONTROLLER_POWER='yes'
+      MOCK_COMMANDS+=('bluetoothctl power on')
+      ;;
+    '--timeout 5 power off')
+      MOCK_CONTROLLER_POWER='no'
+      MOCK_COMMANDS+=('bluetoothctl power off')
+      ;;
+    *) return 1 ;;
+  esac
 }
 
 fail() {
@@ -75,5 +105,34 @@ grep -Fq 'event=command_skipped' "${BLUETOOTH_CONTROL_LOG_FILE}" || fail 'unavai
 grep -Fq 'reason=no_controller' "${BLUETOOTH_CONTROL_LOG_FILE}" || fail 'unavailable controller was not safely skipped'
 grep -Fq 'attempt=runtime_mask_bluetooth_service' "${BLUETOOTH_CONTROL_LOG_FILE}" || fail 'runtime service mask was not logged'
 grep -Fq 'event=action_completed' "${BLUETOOTH_CONTROL_LOG_FILE}" || fail 'action completion was not logged'
+
+STATE_QUERY_FAILED=0
+BLUETOOTH_QUERY_FAILED=0
+BLUETOOTH_SERVICE_ACTIVE='inactive'
+MOCK_CONTROLLER='query-failure'
+collect_bluetooth_controller
+[[ "${BLUETOOTH_CONTROLLER}" == 'unavailable' ]] || fail 'inactive Bluetooth service should not cause a controller query failure'
+[[ "${BLUETOOTH_QUERY_FAILED}" == 0 ]] || fail 'inactive Bluetooth service must not mark Bluetooth state unknown'
+
+MOCK_BLUETOOTH_BLOCK='blocked'
+MOCK_BLUETOOTH_SERVICE='inactive'
+MOCK_CONTROLLER='available'
+MOCK_CONTROLLER_POWER='no'
+MOCK_COMMANDS=()
+bluetooth_enable_apply >/dev/null || fail 'mocked Bluetooth enable should verify successfully'
+[[ "${MOCK_BLUETOOTH_BLOCK}" == 'unblocked' ]] || fail 'Bluetooth was not RFKill-unblocked'
+[[ "${MOCK_BLUETOOTH_SERVICE}" == 'active' ]] || fail 'Bluetooth service was not started'
+[[ "${MOCK_CONTROLLER_POWER}" == 'yes' ]] || fail 'Bluetooth controller was not powered on'
+grep -Fq 'final_result=ENABLED' "${BLUETOOTH_CONTROL_LOG_FILE}" || fail 'Bluetooth enable result was not logged'
+grep -Fq 'attempt=runtime_unmask_bluetooth_service' "${BLUETOOTH_CONTROL_LOG_FILE}" || fail 'runtime unmask was not logged'
+
+MOCK_COMMANDS=()
+bluetooth_power_apply off >/dev/null || fail 'mocked controller power-off should verify successfully'
+[[ "${MOCK_CONTROLLER_POWER}" == 'no' ]] || fail 'Bluetooth controller was not powered off'
+grep -Fq 'final_result=POWERED_OFF' "${BLUETOOTH_CONTROL_LOG_FILE}" || fail 'power-off result was not logged'
+
+bluetooth_power_apply on >/dev/null || fail 'mocked controller power-on should verify successfully'
+[[ "${MOCK_CONTROLLER_POWER}" == 'yes' ]] || fail 'Bluetooth controller was not powered on after power control'
+grep -Fq 'final_result=POWERED_ON' "${BLUETOOTH_CONTROL_LOG_FILE}" || fail 'power-on result was not logged'
 
 printf 'Bluetooth control tests passed.\n'

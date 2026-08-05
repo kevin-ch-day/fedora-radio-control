@@ -8,7 +8,7 @@ umask 077
 readonly PATH
 
 readonly RUNTIME_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
-readonly PROTOCOL_VERSION='5'
+readonly PROTOCOL_VERSION='8'
 
 helper_error() {
   printf 'Error: %s\n' "$*" >&2
@@ -28,7 +28,7 @@ verify_runtime() {
   owner="$(stat -c '%u' "${RUNTIME_DIR}")"
   mode="$(stat -c '%a' "${RUNTIME_DIR}")"
   [[ "${owner}" == 0 ]] && (( ((8#${mode}) & 8#022) == 0 )) || return 1
-  for required in common.sh logging.sh wifi-state.sh bluetooth-state.sh rfkill.sh radio-policy.sh wifi-control.sh bluetooth-control.sh lockdown.sh VERSION; do
+  for required in common.sh display.sh logging.sh wifi-state.sh bluetooth-state.sh rfkill.sh radio-policy.sh wifi-control.sh bluetooth-control.sh lockdown.sh VERSION; do
     path="${RUNTIME_DIR}/${required}"
     runtime_file_safe "${path}" || return 1
   done
@@ -39,6 +39,7 @@ verify_runtime() {
 verify_runtime || { helper_error 'Installed privileged component is invalid.'; exit 3; }
 
 # All paths below resolve inside the root-owned installed runtime directory.
+source "${RUNTIME_DIR}/display.sh"
 source "${RUNTIME_DIR}/common.sh"
 source "${RUNTIME_DIR}/wifi-state.sh"
 source "${RUNTIME_DIR}/bluetooth-state.sh"
@@ -55,13 +56,13 @@ helper_wifi_enable_confirmation() {
     error 'Unable to inspect saved Wi-Fi autoconnect profiles. Wi-Fi enable cancelled.'
     return "${EXIT_UNKNOWN}"
   fi
-  printf '%s\n' 'WARNING: Enabling Wi-Fi increases radio exposure.' >&2
+  display_warning 'Enabling Wi-Fi increases radio exposure.'
   if (( autoconnect_count > 0 )); then
-    printf 'WARNING: %s saved Wi-Fi profile(s) have autoconnect enabled; names are not displayed.\n' "${autoconnect_count}" >&2
+    display_warning "${autoconnect_count} saved Wi-Fi profile(s) have autoconnect enabled; names are not displayed."
   else
-    printf '%s\n' 'Saved Wi-Fi autoconnect profiles: none enabled.' >&2
+    display_label 'Saved Wi-Fi autoconnect profiles:' 'none enabled' safe
   fi
-  printf '%s' 'Type ENABLE-WIFI to continue: ' >&2
+  display_prompt 'Type ENABLE-WIFI to continue: '
   IFS= read -r reply < /dev/tty || { error 'Wi-Fi enable cancelled.'; return "${EXIT_USAGE}"; }
   [[ "${reply}" == 'ENABLE-WIFI' ]] || { error 'Wi-Fi enable cancelled.'; return "${EXIT_POLICY}"; }
 }
@@ -69,10 +70,28 @@ helper_wifi_enable_confirmation() {
 helper_lockdown_confirmation() {
   local reply
   [[ -t 0 && -t 1 ]] || { error 'Lockdown requires an interactive terminal confirmation. Use lockdown --non-interactive only for reviewed automation.'; return "${EXIT_USAGE}"; }
-  printf '%s\n' 'WARNING: Lockdown disables Wi-Fi and Bluetooth, stops bluetooth.service, and may interrupt network access.' >&2
-  printf '%s' 'Type APPLY-LOCKDOWN to continue: ' >&2
+  display_warning 'Lockdown disables Wi-Fi and Bluetooth, stops bluetooth.service, and may interrupt network access.'
+  display_prompt 'Type APPLY-LOCKDOWN to continue: '
   IFS= read -r reply < /dev/tty || { error 'Lockdown cancelled.'; return "${EXIT_USAGE}"; }
   [[ "${reply}" == 'APPLY-LOCKDOWN' ]] || { error 'Lockdown cancelled.'; return "${EXIT_POLICY}"; }
+}
+
+helper_bluetooth_enable_confirmation() {
+  local reply
+  [[ -t 0 && -t 1 ]] || { error 'Bluetooth enable requires an interactive terminal confirmation.'; return "${EXIT_USAGE}"; }
+  display_warning 'Enabling Bluetooth starts its service, unblocks RFKill where possible, and powers on an available adapter.'
+  display_prompt 'Type ENABLE-BLUETOOTH to continue: '
+  IFS= read -r reply < /dev/tty || { error 'Bluetooth enable cancelled.'; return "${EXIT_USAGE}"; }
+  [[ "${reply}" == 'ENABLE-BLUETOOTH' ]] || { error 'Bluetooth enable cancelled.'; return "${EXIT_POLICY}"; }
+}
+
+helper_bluetooth_power_on_confirmation() {
+  local reply
+  [[ -t 0 && -t 1 ]] || { error 'Bluetooth controller power-on requires an interactive terminal confirmation.'; return "${EXIT_USAGE}"; }
+  display_warning 'Powering on a Bluetooth controller increases radio exposure.'
+  display_prompt 'Type POWER-ON-BLUETOOTH to continue: '
+  IFS= read -r reply < /dev/tty || { error 'Bluetooth controller power-on cancelled.'; return "${EXIT_USAGE}"; }
+  [[ "${reply}" == 'POWER-ON-BLUETOOTH' ]] || { error 'Bluetooth controller power-on cancelled.'; return "${EXIT_POLICY}"; }
 }
 
 (( $# == 1 )) || { helper_error 'Unsupported privileged operation.'; exit 2; }
@@ -98,6 +117,20 @@ case "$1" in
   bluetooth-disable)
     require_commands rfkill systemctl flock
     with_mutation_lock bluetooth_disable_apply
+    ;;
+  bluetooth-enable)
+    require_commands rfkill systemctl bluetoothctl flock
+    helper_bluetooth_enable_confirmation || exit $?
+    with_mutation_lock bluetooth_enable_apply
+    ;;
+  bluetooth-power-off)
+    require_commands rfkill bluetoothctl flock
+    with_mutation_lock bluetooth_power_apply off
+    ;;
+  bluetooth-power-on)
+    require_commands rfkill bluetoothctl flock
+    helper_bluetooth_power_on_confirmation || exit $?
+    with_mutation_lock bluetooth_power_apply on
     ;;
   recent-activity)
     ACTION_LOG_DIRECTORY='/var/log/fedora-radio-control'

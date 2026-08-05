@@ -10,6 +10,7 @@ readonly SOURCE_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 readonly INSTALL_DIR='/usr/local/libexec/fedora-radio-control'
 readonly LOG_DIR='/var/log/fedora-radio-control'
 readonly RUNTIME_DIR='/run/fedora-radio-control'
+source "${SOURCE_DIR}/privileged/bash/lib/display.sh"
 INSTALL_STAGE=''
 readonly -a OBSOLETE_FILES=(
   'status-report.sh'
@@ -18,6 +19,7 @@ readonly -a OBSOLETE_FILES=(
 readonly -a SOURCE_FILES=(
   'privileged/bash/helper.sh:radio-control-privileged:0755'
   'privileged/bash/lib/common.sh:common.sh:0640'
+  'privileged/bash/lib/display.sh:display.sh:0640'
   'privileged/bash/lib/logging.sh:logging.sh:0640'
   'privileged/bash/wifi/state.sh:wifi-state.sh:0640'
   'privileged/bash/bluetooth/state.sh:bluetooth-state.sh:0640'
@@ -29,8 +31,8 @@ readonly -a SOURCE_FILES=(
   'VERSION:VERSION:0644'
 )
 
-error() { printf 'Error: %s\n' "$*" >&2; }
-info() { printf '[ FRC ] %s\n' "$*"; }
+error() { display_error "$*"; }
+info() { display_info "$*"; }
 
 cleanup_install_stage() {
   [[ -n "${INSTALL_STAGE:-}" ]] || return 0
@@ -109,21 +111,20 @@ verify_installation() {
 }
 
 show_verification_summary() {
-  printf '\n[ FRC ] // PRIVILEGED RUNTIME VERIFIED\n'
-  printf '%s\n' '---------------------------//-------------------------------'
-  printf '  Runtime files:           %s reviewed files verified\n' "${#SOURCE_FILES[@]}"
-  printf '  Helper:                  %s\n' "${INSTALL_DIR}/radio-control-privileged"
-  printf '  Compatibility protocol:  %s\n' "$(<"${SOURCE_DIR}/VERSION")"
-  printf '  Runtime directory:       root:root, mode 0755\n'
-  printf '  Protected logs:          %s (root-only, mode 0700)\n' "${LOG_DIR}"
+  display_heading 'Privileged Runtime Verified'
+  display_label 'Runtime files:' "${#SOURCE_FILES[@]} reviewed files verified" safe
+  display_label 'Helper:' "${INSTALL_DIR}/radio-control-privileged" paper
+  display_label 'Compatibility protocol:' "$(<"${SOURCE_DIR}/VERSION")" safe
+  display_label 'Runtime directory:' 'root:root, mode 0755' safe
+  display_label 'Protected logs:' "${LOG_DIR} (root-only, mode 0700)" safe
 }
 
 show_install_summary() {
   show_verification_summary
-  printf '%s\n' '---------------------------//-------------------------------'
-  printf '%s\n' '  Installation complete.'
-  printf '%s\n' '  Next: start normally with ./run.sh'
-  printf '%s\n' '  Do not use sudo ./run.sh; selected radio actions prompt for sudo as needed.'
+  display_rule
+  display_success 'Installation complete.'
+  display_label 'Next:' 'start normally with ./run.sh' signal
+  display_warning 'Do not use sudo ./run.sh; selected radio actions prompt for sudo as needed.'
 }
 
 install_runtime() {

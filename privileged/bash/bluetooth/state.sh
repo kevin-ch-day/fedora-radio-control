@@ -34,6 +34,13 @@ collect_bluetooth_controller() {
     BLUETOOTH_CONTROLLER='tool-unavailable'
     return
   fi
+  # Once bluetooth.service is stopped, bluetoothctl may exit without output
+  # because its D-Bus endpoint is gone. RFKill and service state are still
+  # available evidence for a completed disable transaction.
+  if [[ "${BLUETOOTH_SERVICE_ACTIVE}" == 'inactive' ]]; then
+    BLUETOOTH_CONTROLLER='unavailable'
+    return
+  fi
   if ! controller_output="$(bluetoothctl --timeout 2 show 2>&1)"; then
     if [[ "${controller_output}" == *'No default controller available'* ]]; then
       BLUETOOTH_CONTROLLER='unavailable'

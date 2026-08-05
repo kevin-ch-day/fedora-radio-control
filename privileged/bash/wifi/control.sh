@@ -71,7 +71,7 @@ wifi_disable_apply() {
   wifi_control_log_state 'after'
   if [[ "${WIFI_EFFECTIVE}" == 'disabled' ]]; then
     action_log_result "${WIFI_CONTROL_LOG_FILE}" 'DISABLED' "${EXIT_OK}"
-    printf 'Wi-Fi disable verified. Log: %s\n' "${WIFI_CONTROL_LOG_FILE}"
+    success "Wi-Fi disable verified. Log: ${WIFI_CONTROL_LOG_FILE}"
     return "${EXIT_OK}"
   fi
   final_status="${EXIT_POLICY}"
@@ -92,7 +92,7 @@ wifi_enable_apply() {
   wifi_control_log_state 'after'
   if wifi_enable_verified; then
     action_log_result "${WIFI_CONTROL_LOG_FILE}" 'ENABLED' "${EXIT_OK}"
-    printf 'Wi-Fi enable verified. Log: %s\n' "${WIFI_CONTROL_LOG_FILE}"
+    success "Wi-Fi enable verified. Log: ${WIFI_CONTROL_LOG_FILE}"
     return "${EXIT_OK}"
   fi
   final_status="${EXIT_POLICY}"

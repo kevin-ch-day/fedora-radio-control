@@ -9,4 +9,7 @@ class PrivilegedOperation(str, Enum):
     WIFI_DISABLE = "wifi-disable"
     WIFI_ENABLE = "wifi-enable"
     BLUETOOTH_DISABLE = "bluetooth-disable"
+    BLUETOOTH_ENABLE = "bluetooth-enable"
+    BLUETOOTH_POWER_OFF = "bluetooth-power-off"
+    BLUETOOTH_POWER_ON = "bluetooth-power-on"
     RECENT_ACTIVITY = "recent-activity"

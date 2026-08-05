@@ -24,6 +24,7 @@ HELPER = RUNTIME_DIR / "radio-control-privileged"
 RUNTIME_FILE_MODES = {
     "radio-control-privileged": 0o755,
     "common.sh": 0o640,
+    "display.sh": 0o640,
     "logging.sh": 0o640,
     "wifi-state.sh": 0o640,
     "bluetooth-state.sh": 0o640,

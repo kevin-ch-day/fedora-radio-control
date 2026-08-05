@@ -25,6 +25,15 @@ class CommandDispatchTests(unittest.TestCase):
         self.assertEqual(result, EXIT_OK)
         status.assert_called_once()
 
+    def test_vpn_uses_the_privacy_safe_read_only_reporter(self):
+        with self._normal_user(), patch.object(cli, "require_fedora", return_value=True), patch.object(
+            cli.reports, "nordvpn_detail", return_value=EXIT_OK
+        ) as detail:
+            result = cli.main(["vpn"])
+
+        self.assertEqual(result, EXIT_OK)
+        detail.assert_called_once()
+
     def test_control_commands_delegate_only_the_reviewed_operation(self):
         delegated_commands = (
             (["activity"], PrivilegedOperation.RECENT_ACTIVITY),
@@ -33,6 +42,9 @@ class CommandDispatchTests(unittest.TestCase):
             (["wifi", "disable"], PrivilegedOperation.WIFI_DISABLE),
             (["wifi", "enable"], PrivilegedOperation.WIFI_ENABLE),
             (["bluetooth", "disable"], PrivilegedOperation.BLUETOOTH_DISABLE),
+            (["bluetooth", "enable"], PrivilegedOperation.BLUETOOTH_ENABLE),
+            (["bluetooth", "power", "off"], PrivilegedOperation.BLUETOOTH_POWER_OFF),
+            (["bluetooth", "power", "on"], PrivilegedOperation.BLUETOOTH_POWER_ON),
         )
         with self._normal_user(), patch.object(cli, "delegate", return_value=EXIT_OK) as delegate:
             for arguments, operation in delegated_commands:
@@ -67,7 +79,7 @@ class CommandDispatchTests(unittest.TestCase):
 
     def test_missing_subcommand_is_a_usage_error(self):
         with self._normal_user(), contextlib.redirect_stderr(io.StringIO()):
-            for arguments in (["wifi"], ["bluetooth", "enable"]):
+            for arguments in (["wifi"], ["bluetooth"], ["bluetooth", "power"]):
                 with self.subTest(arguments=arguments), self.assertRaises(SystemExit) as raised:
                     cli.main(arguments)
 

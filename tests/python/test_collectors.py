@@ -10,6 +10,21 @@ from fedora_radio_control.system import Result
 
 
 class CollectorTests(unittest.TestCase):
+    def test_inactive_bluetooth_service_skips_controller_query(self):
+        results = iter((
+            Result(0, '{"rfkilldevices":[{"id":1,"type":"wlan","device":"wifi","soft":"blocked","hard":"unblocked"},{"id":2,"type":"bluetooth","device":"bt","soft":"blocked","hard":"unblocked"}]}', ""),
+            Result(0, "disabled\n", ""),
+            Result(0, "inactive\n", ""),
+            Result(0, "masked-runtime\n", ""),
+        ))
+        with patch.object(state, "run", side_effect=lambda *_arguments, **_keywords: next(results)) as run:
+            collected = state.collect()
+
+        self.assertEqual(collected.controller, "unavailable")
+        self.assertFalse(collected.bluetooth_failed)
+        self.assertEqual(collected.bluetooth_effective, "disabled")
+        self.assertEqual(run.call_count, 4)
+
     def test_rfkill_json_and_radio_state_are_collected_without_shell_parsing(self):
         responses = {
             ("rfkill", "--json"): Result(0, '{"rfkilldevices":[{"id":1,"type":"wlan","device":"wifi0","soft":"blocked","hard":"unblocked"},{"id":2,"type":"bluetooth","device":"bt0","soft":"blocked","hard":"unblocked"}]}', ""),
@@ -42,6 +57,17 @@ class CollectorTests(unittest.TestCase):
 
         self.assertEqual(interface, "wlp0s20f3")
         self.assertTrue(known)
+
+    def test_active_wifi_mac_privacy_is_compared_without_exposing_addresses(self):
+        output = "GENERAL.HWADDR:02:00:00:00:00:01\nGENERAL.PERM-HWADDR:00:11:22:33:44:55\n"
+        with patch.object(state, "run", return_value=Result(0, output, "")) as run:
+            posture = state.wifi_mac_privacy("wlp0s20f3", True)
+
+        self.assertEqual(posture, "randomized")
+        self.assertEqual(run.call_args.args[0][-1], "wlp0s20f3")
+
+    def test_inactive_wifi_mac_privacy_is_not_applicable(self):
+        self.assertEqual(state.wifi_mac_privacy(None, True), "not-applicable")
 
     def test_failed_wifi_query_does_not_make_bluetooth_state_unknown(self):
         collected = state.State(

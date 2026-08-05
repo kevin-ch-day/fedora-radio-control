@@ -38,6 +38,7 @@ not collect credentials.
 ./run.sh
 ./run.sh status
 ./run.sh readiness
+./run.sh vpn
 ./run.sh wifi profiles
 ./run.sh --help
 
@@ -51,8 +52,11 @@ not collect credentials.
 ./run.sh wifi disable
 ./run.sh wifi enable
 
-# Bluetooth disable
+# Bluetooth controls (enable and controller power-on require confirmation)
 ./run.sh bluetooth disable
+./run.sh bluetooth enable
+./run.sh bluetooth power off
+./run.sh bluetooth power on
 
 # Read a concise, root-protected action history
 ./run.sh activity
@@ -108,8 +112,8 @@ For full detail, use `sudo tail -n 80 /var/log/fedora-radio-control/latest.log`.
 `run.sh` is the sole supported public entry point. It resolves the repository
 path and starts the Python package from `src/`. Running `./run.sh` with no
 arguments opens the menu, which refreshes live state before each action.
-Bluetooth enable is intentionally not offered; the application exposes no
-placeholder commands or unverified state changes.
+Bluetooth controls provide verified full disable, explicit full enable, and
+separate controller power on/off actions; no menu item is a placeholder.
 `run.sh` refuses root before loading the Python package from the checkout.
 Use `./run.sh` as your normal user; approved actions elevate only through the
 installed root-owned helper.
@@ -124,6 +128,12 @@ On success, the installer reports its staged/deployed file count, compatibility
 protocol, verified runtime and log protection, plus the normal-user launch
 command.
 
+The Python frontend and reviewed Bash entry points share the same industrial
+terminal palette: red FRC identity, cyan operational signals, green verified
+results, yellow review warnings, and red errors. Bash output honors `NO_COLOR`
+and `TERM=dumb`, and automatically remains plain when it is not connected to a
+terminal. Logs always remain uncolored key/value records.
+
 ## Internal layout
 
 The Python frontend is split by responsibility:
@@ -132,6 +142,8 @@ The Python frontend is split by responsibility:
 pyproject.toml                  # standard Python packaging metadata
 src/fedora_radio_control/system.py    # fixed-vector process execution and helper validation
 src/fedora_radio_control/state.py     # RFKill JSON, radio, Wi-Fi, and VPN state
+src/fedora_radio_control/host.py      # passive host exposure and desktop-lock inspection
+src/fedora_radio_control/vpn.py       # privacy-safe optional NordVPN inspection
 src/fedora_radio_control/readiness.py # conference posture checks
 src/fedora_radio_control/reports.py   # detailed radio and profile reports
 src/fedora_radio_control/ui.py        # terminal rendering and prompts
@@ -173,9 +185,12 @@ with Ctrl+D).
 
 The Wi-Fi submenu includes a read-only saved-profile autoconnect inspection.
 Wi-Fi enable requires a typed terminal confirmation because it can allow saved
-profiles to reconnect. Bluetooth enable is intentionally absent until a
-separate exposure-confirmation and recovery path is implemented and tested.
-`sudo` is required only for state-changing commands.
+profiles to reconnect. Bluetooth enable requires `ENABLE-BLUETOOTH`; it
+runtime-unmasks and starts `bluetooth.service`, unblocks Bluetooth RFKill where
+possible, powers on an available controller, and fails unless final state is
+verified. Controller power is separate from service/RFKill state: power-on
+requires `POWER-ON-BLUETOOTH`, while power-off does not. `sudo` is required
+only for state-changing commands.
 
 The supported read-only commands use machine-readable output where the
 platform provides it and verify the reported policy rather than relying on a
@@ -191,11 +206,42 @@ an active Bluetooth service safe.
 
 The readiness report is intentionally conservative: it reports the active
 wireless interface without exposing its SSID, checks whether firewalld is
-running when available, evaluates the assigned wireless firewall zone, counts
+running when available, evaluates the assigned wireless firewall zone (or its
+default zone when an active interface has no explicit assignment), counts
 saved Wi-Fi profiles with autoconnect enabled without showing their names, and
 labels incomplete checks as `REVIEW` or `UNKNOWN`. A failed required query
 produces `STATE UNKNOWN`; it is never silently shown as a safe or absent
 condition.
+It also checks the local SELinux enforcement mode and counts network-visible
+TCP/UDP listeners using only the local `ss` table. Listener addresses, ports,
+processes, and peers are intentionally omitted, and the check sends no network
+traffic or probes. A listener is a review item; disabled or permissive SELinux
+is a readiness failure for a conference-connected device.
+For an active Wi-Fi link, it also compares the active and permanent interface
+MAC addresses without retaining or displaying either value. A changed address
+is a privacy-positive signal; a hardware address is a review item, not proof
+of compromise. The application never modifies NetworkManager MAC-randomization
+settings or reconnects the interface.
+On Fedora Workstation's GNOME desktop, the report also checks only the screen
+lock, idle-delay, and lock-delay settings. Disabled screen locking or disabled
+idle activation fails readiness; an unavailable GNOME settings service is
+reported as not applicable rather than guessed. The application never changes
+desktop preferences.
+When Wi-Fi is active, VPN posture is deliberately advisory: the app can detect
+an active NetworkManager VPN connection but does not claim to verify a full
+tunnel, DNS routing, or IPv6 leak protection.
+When the optional NordVPN CLI is installed, the readiness report also reads its
+status and only the tunnel technology plus Kill Switch, auto-connect, routing,
+LAN-discovery, and Meshnet settings. It never retains, displays, or writes
+server, IP, DNS, account, or transfer details. The report is observational; it
+does not connect, disconnect, or change NordVPN settings. It also does not
+audit NordVPN allowlists, which can intentionally bypass the VPN and Kill
+Switch for selected traffic; review those settings directly before using an
+untrusted network.
+`./run.sh vpn` and main-menu option `8` provide the same focused, read-only
+NordVPN review. They report only connection state, tunnel technology, and the
+security-relevant settings; they never print connection destinations or
+allowlist entries.
 It does not change profiles, firewall zones, or connections. DEF CON network
 settings must always come from the current DEF CON NOC instructions; this tool
 does not guess or hard-code SSIDs, certificates, usernames, or URLs.

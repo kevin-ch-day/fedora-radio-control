@@ -45,10 +45,10 @@ class MenuController:
         self.ui.label("Privileged component:", "INSTALLED AND VERIFIED" if status == "INSTALLED" else status)
         self.ui.label("VPN detected:", reports.vpn_text(connection))
         self.ui.rule()
-        for option in ("[1] Show detailed radio status", "[2] Apply full radio lockdown (confirmation required)", "[3] Wi-Fi controls", "[4] Bluetooth controls", "[5] DEF CON readiness check", "[6] Show recent activity", "[7] Clear screen", "[0] Exit"):
+        for option in ("[1] Show detailed radio status", "[2] Apply full radio lockdown (confirmation required)", "[3] Wi-Fi controls", "[4] Bluetooth controls", "[5] DEF CON readiness check", "[6] Show recent activity", "[7] Clear screen", "[8] NordVPN privacy posture", "[0] Exit"):
             self.ui.option(option)
         self.ui.rule()
-        return self.ui.select(0, 7)
+        return self.ui.select(0, 8)
 
     def _wifi_menu(self) -> int | None:
         state, connection = collect(), connections()
@@ -74,8 +74,23 @@ class MenuController:
         self.ui.label("Service:", state.bluetooth_active)
         self.ui.label("RFKill:", reports.rfkill_summary(state.bluetooth))
         self.ui.label("Controller:", state.controller)
+        self.ui.label("Powered:", state.powered if state.controller == "available" else "NOT AVAILABLE")
         self.ui.rule()
-        for option in ("[1] Show detailed Bluetooth state", "[2] Disable and RFKill-block Bluetooth", "[0] Back"):
+        for option in ("[1] Show detailed Bluetooth state", "[2] Disable and RFKill-block Bluetooth", "[3] Enable Bluetooth (explicit confirmation required)", "[4] Controller power controls", "[0] Back"):
+            self.ui.option(option)
+        self.ui.rule()
+        return self.ui.select(0, 4)
+
+    def _bluetooth_power_menu(self) -> int | None:
+        state = collect()
+        self.ui.heading("Bluetooth Controller Power")
+        self.ui.label("Controller:", state.controller)
+        self.ui.label("Powered:", state.powered if state.controller == "available" else "NOT AVAILABLE")
+        self.ui.label("Service:", state.bluetooth_active)
+        self.ui.label("RFKill:", reports.rfkill_summary(state.bluetooth))
+        self.ui.note("Controller power does not change Bluetooth service or RFKill state.")
+        self.ui.rule()
+        for option in ("[1] Turn Bluetooth controller off", "[2] Turn Bluetooth controller on (explicit confirmation required)", "[0] Back"):
             self.ui.option(option)
         self.ui.rule()
         return self.ui.select(0, 2)
@@ -122,6 +137,11 @@ class MenuController:
                     return EXIT_OK
             elif selection == 7 and sys.stdout.isatty():
                 self.ui.clear()
+            elif selection == 8:
+                reports.nordvpn_detail(self.ui)
+                if not self.ui.pause():
+                    print("\nInput closed. Exiting menu without changes.")
+                    return EXIT_OK
 
     def _run_wifi(self) -> bool:
         while True:
@@ -166,5 +186,32 @@ class MenuController:
                     return False
             elif selected == 2:
                 delegate(self.repository, PrivilegedOperation.BLUETOOTH_DISABLE)
+                if not self.ui.pause():
+                    return False
+            elif selected == 3:
+                delegate(self.repository, PrivilegedOperation.BLUETOOTH_ENABLE)
+                if not self.ui.pause():
+                    return False
+            elif selected == 4:
+                print("\n")
+                if not self._run_bluetooth_power():
+                    return False
+
+    def _run_bluetooth_power(self) -> bool:
+        while True:
+            selected = self._bluetooth_power_menu()
+            if selected is None:
+                return False
+            if selected == 0:
+                print("\n")
+                return True
+            if selected == -1:
+                self.ui.alert("Invalid selection.")
+            elif selected == 1:
+                delegate(self.repository, PrivilegedOperation.BLUETOOTH_POWER_OFF)
+                if not self.ui.pause():
+                    return False
+            elif selected == 2:
+                delegate(self.repository, PrivilegedOperation.BLUETOOTH_POWER_ON)
                 if not self.ui.pause():
                     return False
